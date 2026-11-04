@@ -18,10 +18,32 @@ const normKw = (k: string) => {
   return v
 }
 
-/** Ordena reglas: primero las del usuario, después las más específicas (más largas). */
+/**
+ * Categoría equivalente según el signo: un Bizum que entra es "Bizum recibido",
+ * una transferencia que sale es "Transferencias enviadas".
+ */
+const COUNTERPART: Record<string, { positive?: string; negative?: string }> = {
+  'cat-bizum': { positive: 'cat-bizum-recibido' },
+  'cat-bizum-recibido': { negative: 'cat-bizum' },
+  'cat-transf-recibidas': { negative: 'cat-transf-enviadas' },
+  'cat-transf-enviadas': { positive: 'cat-transf-recibidas' },
+}
+
+export function signedCategory(categoryId: string, amount: number): string {
+  const c = COUNTERPART[categoryId]
+  if (!c) return categoryId
+  return (amount >= 0 ? c.positive : c.negative) ?? categoryId
+}
+
+/**
+ * Ordena reglas: primero las del usuario; después las que marcan el tipo (aportación, traspaso,
+ * ingreso), para que "Transferencia a Trade Republic" sea aportación y no un envío; y por último
+ * las más específicas (más largas).
+ */
 export function sortRules(rules: Rule[]): Rule[] {
   return [...rules].sort((a, b) => {
     if (a.custom !== b.custom) return a.custom ? -1 : 1
+    if (!!a.kind !== !!b.kind) return a.kind ? -1 : 1
     const la = normalize(a.keyword).length
     const lb = normalize(b.keyword).length
     if (la !== lb) return lb - la
@@ -48,7 +70,7 @@ export function categorize(description: string, amount: number, rules: Rule[], p
       let kind: TxKind = baseKind
       if (rule.kind === 'aportacion' || rule.kind === 'transferencia') kind = rule.kind
       // Un ingreso con regla de gasto sigue siendo ingreso (p. ej. Bizum recibido) y viceversa
-      return { categoryId: rule.categoryId, kind, ruleId: rule.id }
+      return { categoryId: signedCategory(rule.categoryId, amount), kind, ruleId: rule.id }
     }
   }
   return { categoryId: null, kind: baseKind }

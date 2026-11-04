@@ -20,7 +20,16 @@ export interface Summary {
   count: number
 }
 
-export function summarize(txs: Transaction[], range: DateRange): Summary {
+/**
+ * Un importe positivo en una categoría de gasto es una devolución (Uber, una compra devuelta):
+ * resta del gasto en lugar de sumar como ingreso.
+ */
+export function isRefund(amount: number, categoryId: string | null, categories?: Map<string, Category>): boolean {
+  if (amount <= 0 || !categoryId || !categories) return false
+  return categories.get(categoryId)?.kind === 'gasto'
+}
+
+export function summarize(txs: Transaction[], range: DateRange, categories?: Map<string, Category>): Summary {
   let income = 0
   let expenses = 0
   let count = 0
@@ -28,12 +37,25 @@ export function summarize(txs: Transaction[], range: DateRange): Summary {
     if (!isCountable(tx) || !inRange(tx.date, range)) continue
     count++
     for (const p of parts(tx)) {
-      if (p.amount > 0) income += p.amount
+      if (isRefund(p.amount, p.categoryId, categories)) expenses -= p.amount
+      else if (p.amount > 0) income += p.amount
       else expenses += -p.amount
     }
   }
   const balance = income - expenses
   return { income, expenses, balance, savingsRate: income > 0 ? balance / income : null, count }
+}
+
+/**
+ * Rango anterior comparable: si el periodo actual aún no ha terminado, se compara con los mismos
+ * días del periodo anterior (del 1 al 4 de octubre frente al 1 al 4 de noviembre),
+ * no con el mes anterior entero.
+ */
+export function comparableRange(current: DateRange, previous: DateRange, today: ISODate = todayISO()): DateRange & { partial: boolean } {
+  if (today < current.start || today >= current.end) return { ...previous, partial: false }
+  const elapsed = Math.round((new Date(today).getTime() - new Date(current.start).getTime()) / 86400000)
+  const end = addDays(previous.start, elapsed)
+  return { start: previous.start, end: end < previous.end ? end : previous.end, partial: true }
 }
 
 export interface Delta {
@@ -102,11 +124,12 @@ export interface CategoryTotal {
 /** Gastos por categoría principal, con el detalle de subcategorías */
 export function expensesByCategory(txs: Transaction[], range: DateRange, categories: Category[]): CategoryTotal[] {
   const byId = new Map(categories.map((c) => [c.id, c]))
+  const refund = (amount: number, id: string | null) => isRefund(amount, id, byId)
   const top = new Map<string, CategoryTotal>()
   for (const tx of txs) {
     if (!isCountable(tx) || !inRange(tx.date, range)) continue
     for (const p of parts(tx)) {
-      if (p.amount >= 0) continue
+      if (p.amount >= 0 && !refund(p.amount, p.categoryId)) continue
       const cat = p.categoryId ? byId.get(p.categoryId) : undefined
       const parentId = cat ? (cat.parentId ?? cat.id) : null
       const key = parentId ?? '__none__'
@@ -116,7 +139,7 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
         top.set(key, t)
       }
       t.amount += -p.amount
-      t.count++
+      if (p.amount < 0) t.count++
       const childId = cat ? cat.id : null
       let ch = t.children.find((c) => c.categoryId === childId)
       if (!ch) {
@@ -124,10 +147,10 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
         t.children.push(ch)
       }
       ch.amount += -p.amount
-      ch.count++
+      if (p.amount < 0) ch.count++
     }
   }
-  const list = [...top.values()].sort((a, b) => b.amount - a.amount)
+  const list = [...top.values()].filter((t) => t.amount > 0).sort((a, b) => b.amount - a.amount)
   list.forEach((t) => t.children.sort((a, b) => b.amount - a.amount))
   return list
 }
@@ -143,27 +166,62 @@ export interface MonthPoint {
 }
 
 /** Ingresos y gastos de los últimos n meses contables (el último es el del día de referencia) */
-export function monthlySeries(txs: Transaction[], n = 12, startDay = 1, today: ISODate = todayISO()): MonthPoint[] {
+export function monthlySeries(txs: Transaction[], n = 12, startDay = 1, today: ISODate = todayISO(), categories?: Map<string, Category>): MonthPoint[] {
   const cur = accountingMonth(today, startDay)
   const out: MonthPoint[] = []
   for (let i = n - 1; i >= 0; i--) {
     const { year, month0 } = shiftMonth(cur.key, -i)
     const r = monthRange(year, month0, startDay)
-    const s = summarize(txs, r)
+    const s = summarize(txs, r, categories)
     out.push({ key: r.key, start: r.start, end: r.end, income: s.income, expenses: s.expenses, balance: s.balance, savingsRate: s.savingsRate })
   }
   return out
 }
 
-/** Saldo de una cuenta hasta una fecha (incluida). Incluye pendientes: son pagos reales. */
+/**
+ * Saldo de una cuenta hasta una fecha (incluida). Incluye pendientes: son pagos reales.
+ *
+ * Si los movimientos vienen de un extracto con columna de saldo, manda el saldo del banco:
+ * se toma el último saldo del banco hasta esa fecha y se le suman los movimientos posteriores que
+ * no estaban en el extracto (pagos del Atajo, añadidos a mano). Así el saldo es exacto aunque el
+ * banco anote algunos movimientos con fecha valor y el orden por fecha no coincida con el suyo.
+ */
 export function accountBalance(account: Account, txs: Transaction[], until?: ISODate): number {
-  let b = account.initialBalance
+  let anchor: Transaction | null = null
+  for (const tx of txs) {
+    if (tx.accountId !== account.id || tx.bankBalance === undefined || !tx.bankEffDate) continue
+    if (until && tx.bankEffDate > until) continue
+    if (!anchor || tx.bankEffDate > anchor.bankEffDate! || (tx.bankEffDate === anchor.bankEffDate && (tx.bankSeq ?? 0) > (anchor.bankSeq ?? 0))) anchor = tx
+  }
+  let b = anchor ? anchor.bankBalance! : account.initialBalance
   for (const tx of txs) {
     if (tx.accountId !== account.id) continue
     if (until && tx.date > until) continue
+    if (anchor && (tx.bankBalance !== undefined || tx.date <= anchor.bankEffDate!)) continue
     b += tx.amount
   }
   return b
+}
+
+/**
+ * Para cada movimiento de un extracto (en el orden del archivo) calcula su posición cronológica
+ * en el banco y una fecha efectiva que nunca retrocede: el mínimo de las fechas de los movimientos
+ * que el banco anotó después. Ej.: CaixaBank anota una transferencia con fecha valor 02/11 antes
+ * que unas compras del 31/10: su fecha efectiva es el 31/10.
+ */
+export function bankOrder(dates: ISODate[]): { seq: number; effDate: ISODate }[] {
+  const n = dates.length
+  if (!n) return []
+  const descending = dates[0] > dates[n - 1]
+  const chrono = dates.map((d, i) => ({ d, i, seq: descending ? n - 1 - i : i }))
+  chrono.sort((a, b) => a.seq - b.seq)
+  const out: { seq: number; effDate: ISODate }[] = new Array(n)
+  let min = chrono[n - 1].d
+  for (let k = n - 1; k >= 0; k--) {
+    if (chrono[k].d < min) min = chrono[k].d
+    out[chrono[k].i] = { seq: chrono[k].seq, effDate: min }
+  }
+  return out
 }
 
 /** Saldo total (cuentas que no son de inversión) al final de cada mes */

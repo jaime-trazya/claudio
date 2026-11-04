@@ -31,7 +31,11 @@ La app funciona sin conexión una vez instalada.
 
 ## 3. Primeros pasos: las cuentas
 
-Ve a **Patrimonio → +** (o **Ajustes → Cuentas**) y crea:
+La forma rápida: en Inicio pulsa **Elegir mis bancos** (o **Ajustes → Cuentas → Añadir mis bancos de golpe**), marca tus bancos (CaixaBank, Revolut, Trade Republic, Efectivo…) y pulsa **Crear**. Cada cuenta lleva el logotipo de su banco. Trade Republic crea dos cuentas ya enlazadas: «Trade Republic · efectivo» y «Trade Republic · inversión».
+
+Al importar un extracto, la app reconoce el banco por el **IBAN** (o por su nombre en la cabecera) y lo mete en su cuenta automáticamente.
+
+Si prefieres hacerlo a mano, ve a **Patrimonio → +** (o **Ajustes → Cuentas**) y crea:
 
 - **Banco**: tu cuenta corriente o nómina. Pon el *saldo inicial* (el que tenías antes del primer movimiento que vayas a importar).
 - **Tarjeta**: si tu tarjeta de crédito tiene extracto propio. En «Nombre de la tarjeta en Wallet» escribe el nombre exacto que aparece en Wallet (por ejemplo, «Visa Débito»); así los pagos del Atajo de Apple Pay irán a esa cuenta. Si pagas con la tarjeta de débito de tu cuenta del banco, pon ese nombre en la cuenta del banco.
@@ -117,7 +121,8 @@ Formatos comprobados:
    - **Elige**: hay varias coincidencias posibles. Indica cuál es o «crear como nuevo».
    - Las transferencias con **«Trade Republic»** en el concepto se marcan como **Aportación** (no cuentan como gasto).
    - Los **traspasos entre tus propias cuentas** se marcan como **Traspaso** y no cuentan como gasto ni ingreso: recargas «Una recarga de Apple Pay», «Apple Pay Top up», «To/From Cuenta Remunerada» o los cargos «Revolut**…» en otro banco.
-5. Pulsa **Guardar**.
+5. Si el extracto trae la columna de **saldo**, verás la casilla **Cuadrar el saldo de la cuenta con el del banco** (activada). La app usa el saldo que da el banco en cada movimiento, así que el saldo de la cuenta coincide siempre con el del banco, aunque el extracto no empiece el día que abriste la cuenta o el banco anote algunos movimientos con fecha valor.
+6. Pulsa **Guardar**.
 
 **Si un traspaso tuyo no se detecta** (por ejemplo, «To Ana Ejemplo» cuando te pasas dinero a ti mismo): abre el movimiento, elige **Traspaso** y acepta **Aplicar siempre**. A partir de ahí se reconocerá solo.
 
@@ -137,7 +142,7 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 ### Extracto del patrimonio neto
 
 1. En la app de Trade Republic, descarga el PDF **«Extracto del patrimonio neto»** (según la versión de la app, en **Perfil → Documentos** o en los informes de la cuenta) y guárdalo en **Archivos**.
-2. En Claudio: **Patrimonio → Trade Republic → Importar extracto de Trade Republic** y elige el PDF. Se lee en el propio iPhone, sin enviarlo a ningún sitio.
+2. En Claudio: pulsa **Extracto de inversión** en Inicio (o **Patrimonio → Trade Republic · inversión → Importar extracto de Trade Republic**) y elige el PDF. Se lee en el propio iPhone, sin enviarlo a ningún sitio.
 3. Revisa la vista previa (fecha, posiciones con ISIN, unidades, precio y valor, criptoactivos, efectivo y total) y pulsa **Guardar foto de la cartera**.
    - Si importas dos veces el mismo extracto, no se duplica.
    - Si el PDF no se puede leer, usa **Meter valor a mano** con el total.
@@ -160,6 +165,15 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 - **Notas y etiquetas**: en cada movimiento. El buscador de Movimientos también busca en ellas.
 - **Presupuestos** (Análisis → Presupuestos): pon un límite mensual por categoría. Verás una barra de progreso y un aviso en Inicio al pasar del **80 %** y del **100 %**.
 - **Recurrentes** (Análisis → Recurrentes): la app detecta sola los pagos que se repiten cada mes (suscripciones, recibos) y muestra el coste mensual y anual.
+- **Cómo se calculan los números**:
+  - **Ingresos y gastos** no incluyen traspasos entre tus cuentas ni aportaciones a inversión.
+  - Una **devolución** (por ejemplo, de Uber o de una compra) resta del gasto de su categoría, no cuenta como ingreso.
+  - **Bizum** se separa en «Bizum enviado» (gasto) y «Bizum recibido» (ingreso).
+  - El mes en curso se compara con **los mismos días del mes anterior** (del 1 al 4 frente al 1 al 4), no con el mes anterior entero.
+  - La **tasa de ahorro** es lo que te queda de lo que ingresas. Si gastas más del doble de lo que entra se muestra como «< −100 %».
+  - En **Análisis**, las gráficas siguen el periodo elegido: con «Año» ves de enero a diciembre de ese año; con «Mes» o «Trimestre», los 12 meses que acaban ahí.
+  - **Inversión**: lo aportado son las aportaciones de tus extractos más lo que indiques en la cuenta («Aportado que no aparece en tus extractos»). Si falta información, la app te lo avisa en vez de mostrar una rentabilidad inventada.
+- **Color de la app** (Ajustes): elige el color principal (o uno a tu gusto con el último círculo). Se adapta solo al modo claro y oscuro.
 - **Primer día del mes** (Ajustes): si cobras a final de mes, puedes hacer que el mes contable empiece, por ejemplo, el día 25.
 
 ---

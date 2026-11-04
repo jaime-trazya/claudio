@@ -169,3 +169,10 @@ export function formatDMY(iso: ISODate): string {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
+
+/** Número de meses naturales que abarca un rango (ambos incluidos) */
+export function monthsBetween(start: ISODate, end: ISODate): number {
+  const [y1, m1] = start.split('-').map(Number)
+  const [y2, m2] = end.split('-').map(Number)
+  return (y2 - y1) * 12 + (m2 - m1) + 1
+}

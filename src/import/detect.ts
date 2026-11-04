@@ -153,7 +153,7 @@ export function detectColumns(rows: Row[]): Detection | null {
 
   if (dateCol === null || descCol === null || (amountCol === null && debitCol === null && creditCol === null)) return null
 
-  const mapping: ColumnMapping = { headerRow, dateCol, descCol, amountCol, debitCol, creditCol }
+  const mapping: ColumnMapping = { headerRow, dateCol, descCol, amountCol, debitCol, creditCol, balanceCol }
   const parsed = applyMappingCount(rows, mapping)
   const candidateRows = body.filter((r) => r.some((c) => c !== null && c !== '')).length
   const confidence = candidateRows ? Math.min(1, parsed / candidateRows) * (headerRow >= 0 ? 1 : 0.8) : 0
@@ -180,6 +180,8 @@ export interface ParsedMovement {
   date: string
   description: string
   amount: number // céntimos con signo
+  /** Saldo que indica el banco tras este movimiento, si el extracto lo trae */
+  balance?: number
   /** Fila original (para la vista previa) */
   rowIndex: number
 }
@@ -206,7 +208,8 @@ export function rowToMovement(r: Row, m: ColumnMapping, rowIndex = 0): ParsedMov
     if (debit || credit) amount = (credit ? Math.abs(credit) : 0) - (debit ? Math.abs(debit) : 0)
   }
   if (amount === null || amount === 0) return null
-  return { date, description, amount, rowIndex }
+  const balance = m.balanceCol !== null && m.balanceCol !== undefined ? parseAmount(r[m.balanceCol]) : null
+  return { date, description, amount, rowIndex, ...(balance !== null ? { balance } : {}) }
 }
 
 export function applyMapping(rows: Row[], m: ColumnMapping): ParsedMovement[] {
@@ -225,4 +228,20 @@ export function headerSignature(rows: Row[], headerRow: number): string {
     return `sin-cabecera-${width}`
   }
   return rows[headerRow].map((c) => normalize(String(c ?? ''))).join('|')
+}
+
+/**
+ * Saldo final según el banco: el del movimiento más reciente.
+ * Si hay varios ese día, se usa el orden del archivo (los bancos listan del más nuevo al más viejo o al revés).
+ */
+export function bankClosingBalance(movements: ParsedMovement[]): { date: string; balance: number } | null {
+  const withBalance = movements.filter((m) => m.balance !== undefined)
+  if (withBalance.length < movements.length * 0.8 || !withBalance.length) return null
+  const first = withBalance[0]
+  const last = withBalance[withBalance.length - 1]
+  const descending = first.date > last.date
+  const maxDate = withBalance.reduce((d, m) => (m.date > d ? m.date : d), first.date)
+  const sameDay = withBalance.filter((m) => m.date === maxDate)
+  const pick = descending ? sameDay[0] : sameDay[sameDay.length - 1]
+  return { date: pick.date, balance: pick.balance! }
 }

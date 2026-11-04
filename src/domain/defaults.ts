@@ -13,7 +13,7 @@ interface CatSeed {
 }
 
 /** Súbelo al cambiar categorías o reglas predefinidas: se sincronizan al abrir la app */
-export const DEFAULTS_VERSION = 2
+export const DEFAULTS_VERSION = 3
 
 /**
  * Categorías predefinidas. Los colores son tonos de la paleta (pálido + tinta oscura del mismo tono);
@@ -90,12 +90,14 @@ const SEED: CatSeed[] = [
       ['cat-seguridad-social', 'Seguridad Social y autónomos', 'receipt', 2],
     ],
   },
-  { id: 'cat-bizum', name: 'Bizum', icon: 'phone', color: '#0e7490' },
+  { id: 'cat-bizum', name: 'Bizum enviado', icon: 'phone', color: '#0e7490' },
+  { id: 'cat-transf-enviadas', name: 'Transferencias enviadas', icon: 'handcoins', color: '#0e7490', since: 3 },
   { id: 'cat-tabaco', name: 'Tabaco y estancos', icon: 'cigarette', color: '#78716c', since: 2 },
   { id: 'cat-apuestas', name: 'Apuestas y loterías', icon: 'dice', color: '#b91c1c', since: 2 },
   { id: 'cat-efectivo', name: 'Retirada de efectivo', icon: 'banknote', color: '#57534e' },
   { id: 'cat-otros-gastos', name: 'Otros gastos', icon: 'dots', color: '#6b7280' },
   { id: 'cat-sueldo', name: 'Sueldo', icon: 'briefcase', color: '#2f7a45', kind: 'ingreso' },
+  { id: 'cat-bizum-recibido', name: 'Bizum recibido', icon: 'phone', color: '#2f7a45', kind: 'ingreso', since: 3 },
   { id: 'cat-transf-recibidas', name: 'Transferencias recibidas', icon: 'handcoins', color: '#2f7a45', kind: 'ingreso', since: 2 },
   { id: 'cat-reembolsos', name: 'Reembolsos', icon: 'undo', color: '#2f7a45', kind: 'ingreso' },
   { id: 'cat-intereses', name: 'Intereses y dividendos', icon: 'trending', color: '#2f7a45', kind: 'ingreso' },
@@ -128,14 +130,16 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['steam', 'steam purchase', 'steamgames', 'gog', 'playstation', 'xbox', 'nintendo', 'epic games', 'instant gaming', 'keydrop', 'eneba', 'g2a', 'riot games', 'supercell'], 'cat-videojuegos'],
   [['estanco', 'estancos', 'tabacos', 'tabacs', 'tabaco', 'expendeduria', 'expendiduria'], 'cat-tabaco'],
   [['bet365', 'codere', 'sportium', 'bwin', 'luckia', 'william hill', 'pokerstars', 'loterias', 'loteria', 'apuestas', 'casino', 'once', 'bingo', 'administracion de loterias'], 'cat-apuestas'],
-  [['transf a su favor', 'transfer inmediata', 'transferencia recibida', 'transferencia a su favor', 'abono transferencia'], 'cat-transf-recibidas', 'ingreso'],
+  [['transf a su favor', 'transfer inmediata', 'transferencia recibida', 'transferencia a su favor', 'abono transferencia', 'traspaso'], 'cat-transf-recibidas', 'ingreso'],
   [['tgss', 'seguridad social', 'cotizacion', 'cuota autonomos'], 'cat-seguridad-social'],
   [['peluqueria', 'barberia', 'barber', 'barbershop', 'estetica', 'manicura', 'druni', 'perfumeria', 'perfumarte', 'primor', 'sephora', 'rituals'], 'cat-cuidado'],
   [['nomina', 'nómina', 'salario', 'haberes'], 'cat-sueldo', 'ingreso'],
   [['bizum'], 'cat-bizum'],
+  [['bizum recibido'], 'cat-bizum-recibido', 'ingreso'],
+  [['transferencia a', 'transf a', 'transferencia enviada', 'western union', 'emision transferencia'], 'cat-transf-enviadas'],
   [['trade republic', 'traderepublic', 'buy trade', 'sell trade', 'savings plan', 'saveback', 'plan de inversion'], 'cat-inversion', 'aportacion'],
   // Traspasos entre tus propias cuentas: no cuentan como gasto ni ingreso
-  [['cuenta remunerada', 'apple pay top up', 'top up', 'recarga de apple pay', 'una recarga de apple pay', 'revolut', 'traspaso', 'traspaso propio', 'traspaso entre cuentas', 'ingreso cajero', 'ingreso en cajero', 'recargar', 'cheque propio'], 'cat-transferencia', 'transferencia'],
+  [['cuenta remunerada', 'apple pay top up', 'top up', 'recarga de apple pay', 'una recarga de apple pay', 'revolut', 'traspaso propio', 'traspaso entre cuentas', 'ingreso cajero', 'ingreso en cajero', 'recargar', 'cheque propio'], 'cat-transferencia', 'transferencia'],
   [['iberdrola', 'endesa', 'naturgy', 'holaluz', 'repsol luz', 'octopus energy', 'totalenergies', 'som energia', 'curenergia'], 'cat-luz'],
   [['canal de isabel', 'aigues', 'aguas de', 'emasesa', 'aqualia', 'emaya'], 'cat-agua'],
   [['movistar', 'vodafone', 'orange', 'yoigo', 'digi', 'pepephone', 'masmovil', 'lowi', 'simyo', 'o2 ', 'jazztel', 'finetwork', 'esim', 'esimflag', 'holafly', 'airalo'], 'cat-internet'],

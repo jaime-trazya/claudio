@@ -99,7 +99,8 @@ export function savingsRateLine(points: { key: string; rate: number | null }[]):
       datasets: [
         {
           label: 'Tasa de ahorro',
-          data: points.map((p) => (p.rate === null ? null : Math.round(p.rate * 100))),
+          // Se corta en ±100 %: un −800 % aplasta el resto de meses y no dice nada útil
+          data: points.map((p) => (p.rate === null ? null : Math.max(-100, Math.min(100, Math.round(p.rate * 100))))),
           backgroundColor: points.map((p) => (p.rate !== null && p.rate < 0 ? c.negative : c.accent)),
           borderRadius: 0,
           barPercentage: 0.6,
@@ -109,9 +110,19 @@ export function savingsRateLine(points: { key: string; rate: number | null }[]):
     options: {
       scales: {
         x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-        y: { suggestedMin: 0, suggestedMax: 50, grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: (v) => `${v} %` } },
+        y: { min: points.some((p) => p.rate !== null && p.rate < 0) ? -100 : 0, suggestedMax: 50, max: 100, grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: (v) => `${v} %` } },
       },
-      plugins: { tooltip: { callbacks: { label: (ctx) => (ctx.raw === null ? 'Sin ingresos' : `Ahorro: ${ctx.raw} %`) } } },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const r = points[ctx.dataIndex]?.rate
+              if (r === null || r === undefined) return 'Sin ingresos'
+              return r < -1 ? `Gastaste ${(1 - r).toFixed(1).replace('.', ',')} veces lo que entró` : `Ahorro: ${Math.round(r * 100)} %`
+            },
+          },
+        },
+      },
     },
   })
 }

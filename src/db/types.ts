@@ -11,6 +11,8 @@ export interface Account {
   /** Fecha desde la que cuenta el saldo inicial */
   initialDate?: ISODate
   color: string
+  /** Banco (para el logotipo y para reconocer sus extractos), ver domain/banks.ts */
+  bank?: string
   /** Nombre de la tarjeta tal y como lo escribe el Atajo de Apple Pay (p. ej. "Visa Débito") */
   cardAlias?: string
   archived?: boolean
@@ -51,6 +53,11 @@ export interface Transaction {
   /** Datos del banco cuando el movimiento se ha conciliado con un extracto */
   bankDate?: ISODate
   bankDescription?: string
+  /** Saldo que indica el banco tras este movimiento (si el extracto lo trae) */
+  bankBalance?: Cents
+  /** Fecha efectiva en el orden del banco y posición, para saber qué saldo del banco vale en cada fecha */
+  bankEffDate?: ISODate
+  bankSeq?: number
   /** Clave del pago del Atajo (para no importarlo dos veces) */
   externalId?: string
   /** Clave de duplicado: cuenta + fecha + importe + concepto del banco */
@@ -101,6 +108,8 @@ export interface ColumnMapping {
   extraDescCols?: number[]
   /** Si los cargos vienen en positivo en la columna de importe */
   invertSign?: boolean
+  /** Columna con el saldo que da el banco tras cada movimiento (opcional) */
+  balanceCol?: number | null
 }
 
 export interface ImportTemplate {
@@ -165,6 +174,8 @@ export interface Settings {
   defaultAccountId: string | null
   /** Tu nombre, para reconocer como traspaso los envíos a ti mismo ("To Ana Ejemplo") */
   ownerName: string
+  /** Color principal de la app elegido en Ajustes (vacío = el de serie) */
+  accentColor: string
   /** Versión de las categorías y reglas predefinidas ya aplicada */
   defaultsVersion: number
 }
@@ -180,5 +191,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dismissedRecurring: [],
   defaultAccountId: null,
   ownerName: '',
+  accentColor: '',
   defaultsVersion: 1,
 }

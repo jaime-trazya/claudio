@@ -7,11 +7,11 @@ import { navigate, routeParams } from '../ui/router'
 import { categoryLabel, txTitle } from '../ui/format'
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { donut, incomeExpenseBars, lineSeries, savingsRateLine } from '../charts/configs'
-import { balanceSeries, delta, expensesByCategory, monthlySeries, periodRange, summarize, topExpenses, topMerchants, type PeriodType } from '../domain/stats'
+import { balanceSeries, comparableRange, delta, expensesByCategory, monthlySeries, periodRange, summarize, topExpenses, topMerchants, type PeriodType } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
 import { detectRecurring, recurringTotals } from '../domain/recurring'
-import { accountingMonth, formatShortDate, monthRange, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
-import { formatMoney, formatPercent, parseAmount } from '../lib/money'
+import { accountingMonth, formatShortDate, monthRange, monthsBetween, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
+import { formatMoney, formatPercent, formatRate, parseAmount } from '../lib/money'
 import { db } from '../db/db'
 import { setSetting } from '../db/settings'
 import { uid } from '../lib/text'
@@ -44,15 +44,18 @@ export function Analysis({ route }: { route: string }) {
   )
 }
 
-function DeltaLine({ cur, prev, lowerIsBetter = false }: { cur: number; prev: number; lowerIsBetter?: boolean }) {
+/** Variación frente al periodo anterior. El % solo se muestra si tiene sentido (base positiva y no diminuta). */
+function DeltaLine({ cur, prev, lowerIsBetter = false, percent = true, label }: { cur: number; prev: number; lowerIsBetter?: boolean; percent?: boolean; label: string }) {
   const { settings } = useData()
   const d = delta(cur, prev)
-  if (d.diff === 0) return <div className="meta">Igual que el periodo anterior</div>
-  if (d.ratio === null) return <div className="meta">Sin datos del periodo anterior</div>
+  if (d.diff === 0) return <div className="meta">Igual que {label}</div>
+  if (prev === 0 && percent) return <div className="meta">Nada {label}</div>
   const good = lowerIsBetter ? d.diff < 0 : d.diff > 0
+  const showPct = percent && prev > 0 && d.ratio !== null && Math.abs(d.ratio) < 10
   return (
     <div className="meta" style={{ color: good ? 'var(--positive)' : undefined }}>
-      {d.diff > 0 ? '▲' : '▼'} {formatMoney(Math.abs(d.diff), { currency: settings.currency })} ({formatPercent(Math.abs(d.ratio))}) vs. anterior
+      {d.diff > 0 ? '▲' : '▼'} {formatMoney(Math.abs(d.diff), { currency: settings.currency })}
+      {showPct ? ` (${formatPercent(Math.abs(d.ratio!))})` : ''} vs. {label}
     </div>
   )
 }
@@ -67,10 +70,16 @@ function Summary() {
   const currency = settings.currency
 
   const period = periodRange(type, offset, settings.monthStartDay, today, custom)
-  const sum = useMemo(() => summarize(transactions, period), [transactions, period.start, period.end]) // eslint-disable-line react-hooks/exhaustive-deps
-  const prev = useMemo(() => summarize(transactions, period.previous), [transactions, period.previous.start, period.previous.end]) // eslint-disable-line react-hooks/exhaustive-deps
+  const cmp = comparableRange(period, period.previous, today)
+  const cmpLabel = cmp.partial ? 'mismos días antes' : 'periodo anterior'
+  const sum = useMemo(() => summarize(transactions, period, categoryById), [transactions, period.start, period.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
+  const prev = useMemo(() => summarize(transactions, cmp, categoryById), [transactions, cmp.start, cmp.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
   const byCat = useMemo(() => expensesByCategory(transactions, period, categories), [transactions, period.start, period.end, categories]) // eslint-disable-line react-hooks/exhaustive-deps
-  const months = useMemo(() => monthlySeries(transactions, 12, settings.monthStartDay, today), [transactions, settings.monthStartDay, today])
+  // Las gráficas mensuales siguen al periodo: el año elegido, o los 12 meses que acaban en el periodo
+  const chartEnd = period.end < today ? period.end : today
+  const nMonths = type === 'personalizado' ? Math.min(24, Math.max(1, monthsBetween(period.start, period.end))) : 12
+  const months = useMemo(() => monthlySeries(transactions, nMonths, settings.monthStartDay, type === 'año' ? period.end : chartEnd, categoryById), [transactions, nMonths, settings.monthStartDay, type, period.end, chartEnd, categoryById])  
+  const monthsLabel = `${monthLabel(months[0].key)} – ${monthLabel(months[months.length - 1].key)}`
   const balances = useMemo(() => balanceSeries(accounts, transactions, months), [accounts, transactions, months])
   const top = useMemo(() => topExpenses(transactions, period, 5), [transactions, period.start, period.end]) // eslint-disable-line react-hooks/exhaustive-deps
   const merchants = useMemo(() => topMerchants(transactions, period, 5), [transactions, period.start, period.end]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -133,24 +142,24 @@ function Summary() {
           <div className="kpi">
             <div className="card-label">Ingresos</div>
             <Money cents={sum.income} sign />
-            <DeltaLine cur={sum.income} prev={prev.income} />
+            <DeltaLine cur={sum.income} prev={prev.income} label={cmpLabel} />
           </div>
           <div className="kpi">
             <div className="card-label">Gastos</div>
             <Money cents={-sum.expenses} plain />
-            <DeltaLine cur={sum.expenses} prev={prev.expenses} lowerIsBetter />
+            <DeltaLine cur={sum.expenses} prev={prev.expenses} lowerIsBetter label={cmpLabel} />
           </div>
           <div className="kpi">
             <div className="card-label">Balance</div>
             <Money cents={sum.balance} sign />
-            <DeltaLine cur={sum.balance} prev={prev.balance} />
+            <DeltaLine cur={sum.balance} prev={prev.balance} percent={false} label={cmpLabel} />
           </div>
           <div className="kpi">
             <div className="card-label">Tasa de ahorro</div>
-            <span className="money" style={{ fontSize: 21, fontWeight: 600, color: sum.savingsRate === null ? 'var(--faint)' : undefined }}>
-              {sum.savingsRate === null ? '—' : formatPercent(sum.savingsRate)}
+            <span className="money" style={{ fontSize: 21, fontWeight: 600, color: sum.savingsRate === null ? 'var(--faint)' : sum.savingsRate < 0 ? 'var(--negative)' : undefined }}>
+              {formatRate(sum.savingsRate)}
             </span>
-            <div className="meta">{prev.savingsRate === null ? 'Sin ingresos antes' : `Antes: ${formatPercent(prev.savingsRate)}`}</div>
+            <div className="meta">{prev.savingsRate === null ? 'Sin ingresos antes' : `Antes: ${formatRate(prev.savingsRate)}`}</div>
           </div>
         </div>
       </section>
@@ -210,7 +219,7 @@ function Summary() {
       <section className="card">
         <div className="card-head">
           <h2>Ingresos y gastos</h2>
-          <span className="meta">Últimos 12 meses</span>
+          <span className="meta">{monthsLabel}</span>
         </div>
         <div className="legend">
           <span>
@@ -237,9 +246,10 @@ function Summary() {
       <section className="card">
         <div className="card-head">
           <h2>Tasa de ahorro mensual</h2>
-          <span className="meta">% de los ingresos</span>
+          <span className="meta">{monthsLabel}</span>
         </div>
         <ChartCanvas build={savingsBuild} height={160} isEmpty={!months.some((m) => m.income)} emptyText="Aparecerá cuando haya ingresos" label="Tasa de ahorro mensual" />
+        <p className="meta" style={{ marginTop: 6 }}>Lo que te queda de lo que ingresas cada mes. Por debajo de cero, gastaste más de lo que entró (la barra se corta en −100 %).</p>
       </section>
 
       <section className="card flush">

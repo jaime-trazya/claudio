@@ -1,4 +1,4 @@
-import { CircleCheck, CloudUpload, FileUp, Plus, Smartphone, TrendingUp, TriangleAlert, Info } from 'lucide-react'
+import { ArrowLeftRight, CircleCheck, CloudUpload, FileUp, Plus, Smartphone, TrendingUp, TriangleAlert, Info } from 'lucide-react'
 import { useData } from '../ui/useData'
 import { useEditor } from '../ui/editor'
 import { useToast } from '../ui/toast'
@@ -8,19 +8,23 @@ import { navigate } from '../ui/router'
 import { useShortcutImport } from '../ui/useShortcutImport'
 import { isIOS, isStandalone } from '../ui/files'
 import { accountingMonth, daysBetween, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
-import { formatMoney } from '../lib/money'
-import { accountBalance, summarize } from '../domain/stats'
+import { formatMoney, formatRate } from '../lib/money'
+import { accountBalance, comparableRange, summarize } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
 import { confirmTransactions } from '../db/actions'
 import { useBackupExport } from '../ui/useBackup'
+import { BankBadge } from '../ui/BankBadge'
+import { QuickSetup } from './Accounts'
+import { useState } from 'react'
+import { useTRImport } from '../ui/useTRImport'
 
-function deltaWords(cur: number, prev: number, prevName: string, currency: string, lowerIsBetter = false) {
+function deltaWords(cur: number, prev: number, currency: string, lowerIsBetter = false) {
   const d = cur - prev
   if (prev === 0 && cur === 0) return { text: 'Sin movimientos', tone: '' }
-  if (d === 0) return { text: `Igual que en ${prevName}`, tone: '' }
+  if (d === 0) return { text: 'Igual', tone: '' }
   const better = lowerIsBetter ? d < 0 : d > 0
-  return { text: `${formatMoney(Math.abs(d), { currency, compact: Math.abs(d) >= 100000 })} ${d > 0 ? 'más' : 'menos'} que en ${prevName}`, tone: better ? 'var(--positive)' : 'var(--muted)' }
+  return { text: `${formatMoney(Math.abs(d), { currency, compact: Math.abs(d) >= 100000 })} ${d > 0 ? 'más' : 'menos'}`, tone: better ? 'var(--positive)' : 'var(--muted)' }
 }
 
 export function Home() {
@@ -28,14 +32,19 @@ export function Home() {
   const { openTx, openAccount } = useEditor()
   const toast = useToast()
   const shortcut = useShortcutImport()
+  const [quick, setQuick] = useState(false)
+  const investment = accounts.find((a) => a.type === 'inversion' && !a.archived)
+  const tr = useTRImport(investment)
   const exportBackup = useBackupExport()
   const today = todayISO()
   const month = accountingMonth(today, settings.monthStartDay)
   const prevKey = shiftMonth(month.key, -1)
   const prevRange = monthRange(prevKey.year, prevKey.month0, settings.monthStartDay)
   const prevName = monthName(prevKey.month0)
-  const cur = summarize(transactions, month)
-  const prev = summarize(transactions, prevRange)
+  const cur = summarize(transactions, month, categoryById)
+  const cmp = comparableRange(month, prevRange, today)
+  const prev = summarize(transactions, cmp, categoryById)
+  const cmpLabel = cmp.partial ? `a día ${daysBetween(prevRange.start, cmp.end) + 1} de ${prevName}` : `${prevName} entero`
   const statuses = budgets.map((b) => budgetStatus(b, transactions, month, categories))
   const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0)
   const pending = transactions.filter((t) => t.status === 'pendiente')
@@ -72,8 +81,11 @@ export function Home() {
           <p className="muted">
             Crea tu cuenta del banco, tus tarjetas, el efectivo y, si inviertes, tu cuenta de Trade Republic. Después podrás importar el extracto del banco cada mes.
           </p>
-          <button className="btn primary" onClick={() => openAccount()}>
-            <Plus size={18} /> Crear la primera cuenta
+          <button className="btn primary" onClick={() => setQuick(true)}>
+            <Plus size={18} /> Elegir mis bancos
+          </button>
+          <button className="btn" onClick={() => openAccount()}>
+            Crear una cuenta a mano
           </button>
           <button className="btn" onClick={() => navigate('/ajustes')}>
             Restaurar una copia de seguridad
@@ -83,14 +95,15 @@ export function Home() {
           <strong>Sin servidor, sin registro</strong>
           <p className="muted small">Nada sale de tu dispositivo. Haz una copia de seguridad en iCloud Drive de vez en cuando desde Ajustes.</p>
         </div>
+        {quick && <QuickSetup onClose={() => setQuick(false)} />}
       </main>
     )
   }
 
   const spentRatio = budgetTotal ? cur.expenses / budgetTotal : 0
   const dayRatio = Math.min(1, dayN / totalDays)
-  const incomeD = deltaWords(cur.income, prev.income, prevName, currency)
-  const expD = deltaWords(cur.expenses, prev.expenses, prevName, currency, true)
+  const incomeD = deltaWords(cur.income, prev.income, currency)
+  const expD = deltaWords(cur.expenses, prev.expenses, currency, true)
 
   return (
     <main className="screen">
@@ -135,27 +148,27 @@ export function Home() {
           </div>
         ) : (
           <p className="small" style={{ color: expD.tone || 'var(--muted)' }}>
-            {expD.text}
+            {expD.text === 'Sin movimientos' ? 'Sin gastos todavía' : `${expD.text} que ${cmp.partial ? 'a estas alturas de' : 'en'} ${prevName}`}
           </p>
         )}
         <div className="split3">
           <div>
             <div className="meta">Ingresos</div>
             <Money cents={cur.income} sign />
-            <div className="meta" style={{ color: incomeD.tone || undefined }}>{cur.income || prev.income ? incomeD.text.replace(/ que en .*/, '') : '—'}</div>
+            <div className="meta" style={{ color: incomeD.tone || undefined }}>{cur.income || prev.income ? incomeD.text : '—'}</div>
           </div>
           <div>
             <div className="meta">Gastos</div>
             <Money cents={-cur.expenses} plain />
-            <div className="meta" style={{ color: expD.tone || undefined }}>{cur.expenses || prev.expenses ? expD.text.replace(/ que en .*/, '') : '—'}</div>
+            <div className="meta" style={{ color: expD.tone || undefined }}>{cur.expenses || prev.expenses ? expD.text : '—'}</div>
           </div>
           <div>
             <div className="meta">Balance</div>
             <Money cents={cur.balance} sign />
-            <div className="meta">{cur.savingsRate !== null ? `Ahorras el ${Math.round(cur.savingsRate * 100)} %` : 'Sin ingresos aún'}</div>
+            <div className="meta">{cur.savingsRate === null ? 'Sin ingresos aún' : cur.savingsRate < 0 ? 'Gastas más de lo que entra' : `Ahorras el ${formatRate(cur.savingsRate)}`}</div>
           </div>
         </div>
-        <p className="meta">Comparado con {prevName} entero.</p>
+        <p className="meta">Comparado con {cmpLabel}. Sin contar traspasos entre tus cuentas ni aportaciones.</p>
       </section>
 
       <div className="actions">
@@ -171,10 +184,17 @@ export function Home() {
           <Plus size={22} strokeWidth={1.8} />
           Añadir movimiento
         </button>
-        <button className="action" onClick={() => (hasInvestment ? navigate(`/patrimonio/${accounts.find((a) => a.type === 'inversion')!.id}?importar=1`) : navigate('/patrimonio'))}>
-          <TrendingUp size={22} strokeWidth={1.8} />
-          Trade Republic
-        </button>
+        {investment ? (
+          <button className="action" onClick={() => void tr.start()} disabled={tr.busy}>
+            <TrendingUp size={22} strokeWidth={1.8} />
+            {tr.busy ? 'Leyendo…' : 'Extracto de inversión'}
+          </button>
+        ) : (
+          <button className="action" onClick={() => openTx(undefined, { kind: 'transferencia' })}>
+            <ArrowLeftRight size={22} strokeWidth={1.8} />
+            Traspaso entre cuentas
+          </button>
+        )}
       </div>
 
       {showBackup && (
@@ -197,7 +217,7 @@ export function Home() {
           icon={<TrendingUp size={20} />}
           title={`Importa el extracto de Trade Republic de ${monthName((fromISO(today).getMonth() + 11) % 12)}`}
           actions={
-            <button className="btn small" onClick={() => navigate(`/patrimonio/${accounts.find((a) => a.type === 'inversion')!.id}?importar=1`)}>
+            <button className="btn small" onClick={() => void tr.start()}>
               Importar ahora
             </button>
           }
@@ -293,6 +313,7 @@ export function Home() {
             .filter((a) => !a.archived && a.type !== 'inversion')
             .map((a) => (
               <button key={a.id} className="list-item" onClick={() => navigate(`/movimientos?cuenta=${a.id}`)}>
+                <BankBadge account={a} size={34} />
                 <span className="grow primary-line ellipsis">{a.name}</span>
                 <Money cents={accountBalance(a, transactions)} plain />
               </button>
@@ -300,6 +321,7 @@ export function Home() {
         </div>
       </section>
       {shortcut.element}
+      {tr.element}
     </main>
   )
 }

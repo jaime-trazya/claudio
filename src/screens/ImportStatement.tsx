@@ -9,7 +9,8 @@ import { categoryLabel } from '../ui/format'
 import { ACCEPT_STATEMENT, pickFile } from '../ui/files'
 import type { Row } from '../import/readSheet'
 import type { PdfTable } from '../import/pdfTable'
-import { applyMapping, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
+import { detectBank } from '../domain/banks'
+import { applyMapping, bankClosingBalance, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
 import { categorize, effectiveRules } from '../domain/categorize'
 import { applyStatementImport, saveTemplate } from '../db/actions'
@@ -43,6 +44,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [picking, setPicking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [tables, setTables] = useState<PdfTable[] | null>(null)
+  const [adjust, setAdjust] = useState(true)
   const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
   const [limit, setLimit] = useState(200)
   const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
@@ -74,6 +76,11 @@ export function ImportStatement({ route }: { route: string }) {
           if (inv) navigate(`/patrimonio/${inv.id}?importar=1`, true)
           return
         }
+        const firstHeader = Math.max(0, lines.findIndex((l) => /\b(fecha|date)\b/i.test(l.text) && l.items.length >= 3))
+        const target = pickAccountFor(
+          lines.slice(0, 80).map((l) => l.text).join(' '),
+          lines.slice(0, Math.min(firstHeader || 12, 12)).map((l) => l.text).join(' '),
+        )
         const found = pdfToTables(lines)
         if (!found.length) {
           toast.show(lines.length ? 'No se ha encontrado ninguna tabla de movimientos en el PDF. Prueba a descargar el extracto en Excel o CSV.' : 'El PDF no tiene texto (¿es una foto escaneada?). Descárgalo en Excel o CSV.')
@@ -83,12 +90,15 @@ export function ImportStatement({ route }: { route: string }) {
           setTables(found.sort((a, b) => b.movements - a.movements))
           return
         }
-        loadRows(found[0].rows)
+        loadRows(found[0].rows, target)
         return
       }
       // SheetJS se carga solo al importar, para que la app arranque más rápido
       const { readSheet } = await import('../import/readSheet')
-      loadRows(readSheet(buf, file.name))
+      const data = readSheet(buf, file.name)
+      const headerRow = detectColumns(data)?.mapping.headerRow ?? -1
+      const top = data.slice(0, Math.max(0, headerRow)).map((r) => r.join(' ')).join(' ')
+      loadRows(data, pickAccountFor(top, top))
     } catch {
       toast.show('No se ha podido leer el archivo')
     } finally {
@@ -96,7 +106,20 @@ export function ImportStatement({ route }: { route: string }) {
     }
   }
 
-  function loadRows(data: Row[]) {
+  /** Si el extracto es de un banco que tienes como cuenta, se importa en esa cuenta */
+  function pickAccountFor(text: string, header: string): string {
+    const bank = detectBank(text, header)
+    if (!bank) return accountId
+    const match = usable.find((a) => a.bank === bank.id) ?? usable.find((a) => a.name.toLowerCase().includes(bank.name.toLowerCase()))
+    if (match && match.id !== accountId) {
+      setAccountId(match.id)
+      toast.show(`Extracto de ${bank.name}: se importará en «${match.name}»`)
+      return match.id
+    }
+    return accountId
+  }
+
+  function loadRows(data: Row[], acc: string = accountId) {
     setTables(null)
     setRows(data)
     if (!data.length) {
@@ -108,7 +131,7 @@ export function ImportStatement({ route }: { route: string }) {
     if (tpl) {
       setMapping(tpl.mapping)
       setTemplateName(tpl.name)
-      const p = buildPlan(tpl.mapping, data)
+      const p = buildPlan(tpl.mapping, data, acc)
       if (p.length) {
         setStep('vista')
         return
@@ -118,7 +141,7 @@ export function ImportStatement({ route }: { route: string }) {
     const det = detectColumns(data)
     if (det && det.confidence >= 0.6 && det.validRows > 0) {
       setMapping(det.mapping)
-      buildPlan(det.mapping, data)
+      buildPlan(det.mapping, data, acc)
       setStep('vista')
     } else {
       setMapping(
@@ -132,9 +155,9 @@ export function ImportStatement({ route }: { route: string }) {
   async function save() {
     setBusy(true)
     try {
-      const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides })
+      const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null })
       await setSetting('defaultAccountId', accountId)
-      toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}`)
+      toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}${res.adjusted ? ' · saldo cuadrado con el banco' : ''}`)
       navigate(`/movimientos?cuenta=${accountId}`, true)
     } finally {
       setBusy(false)
@@ -142,6 +165,7 @@ export function ImportStatement({ route }: { route: string }) {
   }
 
   const summary = summarizePlan(plan)
+  const closing = mapping ? bankClosingBalance(plan.map((r) => r.movement)) : null
 
   if (!usable.length) {
     return (
@@ -188,7 +212,7 @@ export function ImportStatement({ route }: { route: string }) {
               <span className="field-label">Este PDF tiene varias tablas. ¿Cuál quieres importar en «{usable.find((a) => a.id === accountId)?.name}»?</span>
               <div className="card flush list">
                 {tables.map((t, i) => (
-                  <button key={i} className="list-item" onClick={() => loadRows(t.rows)}>
+                  <button key={i} className="list-item" onClick={() => loadRows(t.rows, accountId)}>
                     <div className="grow">
                       <div className="primary-line">{t.label}</div>
                       <div className="secondary-line ellipsis">
@@ -256,6 +280,14 @@ export function ImportStatement({ route }: { route: string }) {
               </div>
             </div>
           </section>
+          {closing && (
+            <label className="card check-row small" style={{ padding: '10px 14px' }}>
+              <input type="checkbox" checked={adjust} onChange={(e) => setAdjust(e.target.checked)} />
+              <span>
+                Cuadrar el saldo de la cuenta con el del banco: <strong><Money cents={closing.balance} plain /></strong> el {formatShortDate(closing.date)}
+              </span>
+            </label>
+          )}
           <button className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setStep('columnas')}>
             <Settings2 size={15} /> Ajustar columnas
           </button>

@@ -11,6 +11,8 @@ import { formatMoney, parseAmount } from '../lib/money'
 import { uid } from '../lib/text'
 import type { Account, AccountType } from '../db/types'
 import { CATEGORY_COLORS } from '../ui/iconNames'
+import { BANKS, bankById, quickAccountsFor } from '../domain/banks'
+import { BankBadge } from '../ui/BankBadge'
 
 const TYPES: { value: AccountType; label: string }[] = [
   { value: 'banco', label: 'Banco' },
@@ -22,6 +24,7 @@ const TYPES: { value: AccountType; label: string }[] = [
 export function AccountsScreen() {
   const { accounts, transactions } = useData()
   const { openAccount } = useEditor()
+  const [quick, setQuick] = useState(false)
   return (
     <main className="screen sub">
       <BackBar label="Ajustes" fallback="/ajustes" />
@@ -35,9 +38,7 @@ export function AccountsScreen() {
         {accounts.length ? (
           accounts.map((a) => (
             <button key={a.id} className="list-item" onClick={() => openAccount(a.id)}>
-              <span className="tile sm" style={{ '--c': a.color } as React.CSSProperties} aria-hidden>
-                {a.name.slice(0, 1).toUpperCase()}
-              </span>
+              <BankBadge account={a} size={36} />
               <div className="grow">
                 <div className="primary-line ellipsis">
                   {a.name}
@@ -55,7 +56,59 @@ export function AccountsScreen() {
           </div>
         )}
       </section>
+      <button className="btn" onClick={() => setQuick(true)}>
+        Añadir mis bancos de golpe
+      </button>
+      {quick && <QuickSetup onClose={() => setQuick(false)} />}
     </main>
+  )
+}
+
+/** Crea de una vez las cuentas de tus bancos (Trade Republic crea efectivo + inversión enlazadas) */
+export function QuickSetup({ onClose }: { onClose: () => void }) {
+  const { accounts } = useData()
+  const toast = useToast()
+  const [picked, setPicked] = useState<string[]>([])
+  const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])
+  async function create() {
+    let order = accounts.length
+    const created: Account[] = []
+    for (const bank of picked) {
+      for (const q of quickAccountsFor(bank)) {
+        if (accounts.some((a) => a.name === q.name) || created.some((a) => a.name === q.name)) continue
+        const b = bankById(bank)!
+        created.push({ id: uid(), name: q.name, type: q.type, bank, initialBalance: 0, color: b.bg, order: order++, createdAt: Date.now(), cashAccountId: q.cashAccount })
+      }
+    }
+    // Enlaza la inversión con su cuenta de efectivo
+    for (const a of created) {
+      if (a.cashAccountId) a.cashAccountId = [...created, ...accounts].find((x) => x.name === a.cashAccountId)?.id
+    }
+    await db.accounts.bulkAdd(created)
+    toast.show(`${created.length} cuenta${created.length === 1 ? '' : 's'} creada${created.length === 1 ? '' : 's'}`)
+    onClose()
+  }
+  return (
+    <Sheet
+      title="Tus bancos"
+      onClose={onClose}
+      full
+      footer={
+        <button className="btn primary block" disabled={!picked.length} onClick={() => void create()}>
+          Crear {picked.length ? `${picked.length} banco${picked.length === 1 ? '' : 's'}` : 'cuentas'}
+        </button>
+      }
+    >
+      <p className="muted small">Elige los bancos que usas. Trade Republic crea dos cuentas: su efectivo (para el extracto de cuenta) y la inversión (para el extracto del patrimonio), ya enlazadas.</p>
+      <div className="cat-grid">
+        {BANKS.map((b) => (
+          <button key={b.id} className="cat-option" aria-pressed={picked.includes(b.id)} onClick={() => toggle(b.id)}>
+            <BankBadge bank={b.id} size={36} />
+            {b.name}
+          </button>
+        ))}
+      </div>
+    </Sheet>
   )
 }
 
@@ -70,6 +123,7 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
   const [cardAlias, setCardAlias] = useState(existing?.cardAlias ?? '')
   const [archived, setArchived] = useState(!!existing?.archived)
   const [cashAccountId, setCashAccountId] = useState(existing?.cashAccountId ?? '')
+  const [bank, setBank] = useState(existing?.bank ?? '')
   const initialCents = initial.trim() ? parseAmount(initial) : 0
   const valid = name.trim().length > 0 && initialCents !== null
   const count = existing ? transactions.filter((t) => t.accountId === existing.id).length : 0
@@ -85,6 +139,7 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
       cardAlias: cardAlias.trim() || undefined,
       archived,
       cashAccountId: type === 'inversion' && cashAccountId ? cashAccountId : undefined,
+      bank: bank || undefined,
       order: existing?.order ?? accounts.length,
       createdAt: existing?.createdAt ?? Date.now(),
     }
@@ -127,16 +182,38 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
       }
     >
       <Segmented label="Tipo de cuenta" value={type} onChange={setType} options={TYPES} />
+      <div className="field">
+        <span className="field-label">Banco</span>
+        <div className="chips" style={{ paddingBottom: 2 }}>
+          <button className={`chip ${!bank ? 'on' : ''}`} onClick={() => setBank('')}>
+            Ninguno
+          </button>
+          {BANKS.map((b) => (
+            <button
+              key={b.id}
+              className={`chip ${bank === b.id ? 'on' : ''}`}
+              style={{ paddingLeft: 6 }}
+              onClick={() => {
+                setBank(b.id)
+                setColor(b.bg)
+                if (!name.trim()) setName(b.name)
+              }}
+            >
+              <BankBadge bank={b.id} size={26} /> {b.name}
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="field">
         <span>Nombre</span>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={type === 'inversion' ? 'Trade Republic' : type === 'tarjeta' ? 'Tarjeta de crédito' : type === 'efectivo' ? 'Cartera' : 'Cuenta nómina'} autoFocus={!existing} />
       </label>
       <label className="field">
-        <span>{type === 'inversion' ? 'Aportado antes de usar la app' : 'Saldo inicial'}</span>
+        <span>{type === 'inversion' ? 'Aportado que no aparece en tus extractos' : 'Saldo inicial'}</span>
         <input className="input" inputMode="decimal" value={initial} onChange={(e) => setInitial(e.target.value)} placeholder="0,00" />
         <span className="meta">
           {type === 'inversion'
-            ? 'Lo que ya habías metido en la cuenta. Las aportaciones nuevas se suman solas al importar el extracto del banco.'
+            ? 'Lo que metiste antes de usar la app o por otra vía (plan de inversión con tarjeta, regalos…). Las aportaciones que estén en tus extractos se suman solas: no las repitas aquí.'
             : 'Saldo antes del primer movimiento que vayas a importar. El saldo actual se calcula sumando los movimientos.'}
         </span>
       </label>

@@ -5,6 +5,7 @@ import { DataProvider } from './ui/data'
 import { useData } from './ui/useData'
 import { ToastProvider } from './ui/Toaster'
 import { EditorCtx, type EditorApi } from './ui/editor'
+import { accentVars, isValidHex } from './ui/theme'
 import { navigate, routePath, useRoute } from './ui/router'
 import type { Transaction } from './db/types'
 import { Home } from './screens/Home'
@@ -35,7 +36,20 @@ function useTheme() {
     if (settings.theme === 'claro') root.dataset.theme = 'light'
     else if (settings.theme === 'oscuro') root.dataset.theme = 'dark'
     else delete root.dataset.theme
-  }, [settings.theme])
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => {
+      const keys = ['--accent', '--accent-soft', '--accent-ink', '--pill-accent-bg', '--pill-accent-ink']
+      if (!isValidHex(settings.accentColor)) {
+        keys.forEach((k) => root.style.removeProperty(k))
+        return
+      }
+      const dark = settings.theme === 'oscuro' || (settings.theme === 'sistema' && mq.matches)
+      for (const [k, v] of Object.entries(accentVars(settings.accentColor, dark))) root.style.setProperty(k, v)
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [settings.theme, settings.accentColor])
 }
 
 function UpdatePrompt() {

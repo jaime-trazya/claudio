@@ -134,3 +134,10 @@ export function parseDecimal(input: unknown): number | null {
   const v = Number(s)
   return Number.isFinite(v) ? v : null
 }
+
+/** Tasa de ahorro legible: fuera de ±100 % no aporta nada ("gastaste 8 veces lo que ingresaste") */
+export function formatRate(rate: number | null): string {
+  if (rate === null || !Number.isFinite(rate)) return '—'
+  if (rate < -1) return '< −100 %'
+  return formatPercent(rate).replace('-', '−')
+}

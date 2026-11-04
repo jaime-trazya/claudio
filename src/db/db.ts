@@ -75,7 +75,7 @@ export async function syncDefaults(database: FinanzasDB = db): Promise<boolean> 
   const row = await database.settings.get('defaultsVersion')
   const current = typeof row?.value === 'number' ? row.value : 1
   if (current >= DEFAULTS_VERSION) return false
-  await database.transaction('rw', database.categories, database.rules, database.settings, async () => {
+  await database.transaction('rw', database.categories, database.rules, database.settings, database.transactions, async () => {
     const existing = new Set(await database.categories.toCollection().primaryKeys())
     const fresh = defaultCategoriesWithVersion()
       .filter((c) => c.since > current && !existing.has(c.id))
@@ -87,6 +87,20 @@ export async function syncDefaults(database: FinanzasDB = db): Promise<boolean> 
     const customKeywords = new Set((await database.rules.filter((r) => r.custom).toArray()).map((r) => r.keyword))
     await database.rules.filter((r) => !r.custom).delete()
     await database.rules.bulkPut(defaultRules().filter((r) => catIds.has(r.categoryId) && !customKeywords.has(r.keyword)))
+    if (current < 3) {
+      // v3: "Bizum" se divide en enviado/recibido y "TRASPASO" (de otra persona) pasa a transferencia recibida
+      const bizum = await database.categories.get('cat-bizum')
+      if (bizum?.name === 'Bizum') await database.categories.update('cat-bizum', { name: 'Bizum enviado' })
+      await database.transactions
+        .filter((t) => t.categoryId === 'cat-bizum' && t.amount > 0 && !t.splits?.length)
+        .modify({ categoryId: 'cat-bizum-recibido', kind: 'ingreso' })
+      await database.transactions
+        .filter((t) => t.kind === 'transferencia' && !t.transferId && /^\s*traspaso\s*$/i.test(t.bankDescription ?? t.description))
+        .modify((t) => {
+          t.kind = t.amount > 0 ? 'ingreso' : 'gasto'
+          t.categoryId = t.amount > 0 ? 'cat-transf-recibidas' : 'cat-transf-enviadas'
+        })
+    }
     await database.settings.put({ key: 'defaultsVersion', value: DEFAULTS_VERSION })
   })
   return true

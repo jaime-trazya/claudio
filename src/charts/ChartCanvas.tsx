@@ -20,7 +20,7 @@ function useThemeVersion() {
     const on = () => setV((x) => x + 1)
     mq.addEventListener('change', on)
     const obs = new MutationObserver(on)
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] })
     return () => {
       mq.removeEventListener('change', on)
       obs.disconnect()

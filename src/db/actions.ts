@@ -6,6 +6,7 @@ import type { ShortcutPayment } from '../import/shortcut'
 import { accountForCard } from '../import/shortcut'
 import type { TRStatement } from '../import/tradeRepublic'
 import { normalize, uid } from '../lib/text'
+import { bankOrder } from '../domain/stats'
 import { getSettings, setSetting } from './settings'
 import { todayISO } from '../lib/dates'
 import { reseed } from './db'
@@ -101,15 +102,22 @@ export interface StatementImportInput {
   fileName: string
   /** Categoría elegida a mano en la vista previa (por índice de fila) */
   categoryOverrides?: Record<number, string | null>
+  /** Saldo del banco al final del extracto: si se indica, se ajusta el saldo inicial para cuadrar */
+  bankBalance?: { date: string; balance: number } | null
 }
 
 /** Guarda el extracto según la vista previa: crea los nuevos y concilia los emparejados */
-export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {} }: StatementImportInput) {
+export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {}, bankBalance }: StatementImportInput) {
   const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const importId = uid()
   let added = 0
   let reconciled = 0
   let skipped = 0
+  // Orden del banco para usar sus saldos (ver accountBalance)
+  const order = bankOrder(rows.map((r) => r.movement.date))
+  const seqBase = Math.floor(Date.now() / 1000) * 100000
+  const bankFields = (i: number) =>
+    rows[i].movement.balance !== undefined ? { bankBalance: rows[i].movement.balance, bankEffDate: order[i].effDate, bankSeq: seqBase + order[i].seq } : {}
   await db.transaction('rw', db.transactions, db.imports, async () => {
     for (const [i, r] of rows.entries()) {
       if (!r.include) {
@@ -131,6 +139,7 @@ export async function applyStatementImport({ rows, accountId, fileName, category
             bankDate: mv.date,
             bankDescription: mv.description,
             dupKey: key,
+            ...bankFields(i),
             categoryId: override !== undefined ? override : (existing.categoryId ?? auto.categoryId),
             kind: existing.kind === 'gasto' || existing.kind === 'ingreso' ? (auto.kind === 'aportacion' ? 'aportacion' : existing.kind) : existing.kind,
             importId,
@@ -154,13 +163,30 @@ export async function applyStatementImport({ rows, accountId, fileName, category
           bankDescription: mv.description,
           dupKey: key,
           importId,
+          ...bankFields(i),
         }),
       )
       added++
     }
     await db.imports.add({ id: importId, type: 'extracto', fileName, accountId, added, reconciled, skipped, createdAt: now() })
   })
-  return { added, reconciled, skipped }
+  const adjusted = bankBalance ? await matchBankBalance(accountId, bankBalance) : 0
+  return { added, reconciled, skipped, adjusted }
+}
+
+/**
+ * Ajusta el saldo inicial de la cuenta para que el saldo de la app en esa fecha sea el del banco.
+ * Así el saldo es correcto aunque el extracto no empiece el día que se abrió la cuenta.
+ * Devuelve el ajuste aplicado (céntimos).
+ */
+export async function matchBankBalance(accountId: string, bank: { date: string; balance: number }): Promise<number> {
+  const account = await db.accounts.get(accountId)
+  if (!account) return 0
+  const txs = await db.transactions.where('accountId').equals(accountId).toArray()
+  const computed = account.initialBalance + txs.filter((t) => t.date <= bank.date).reduce((s, t) => s + t.amount, 0)
+  const diff = bank.balance - computed
+  if (diff !== 0) await db.accounts.update(accountId, { initialBalance: account.initialBalance + diff })
+  return diff
 }
 
 /** Importa los pagos nuevos del Atajo como pendientes de confirmar */

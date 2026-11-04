@@ -1,22 +1,19 @@
-import { useMemo, useState } from 'react'
-import { ArrowLeftRight, FileUp, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react'
+import { useMemo } from 'react'
+import { ArrowLeftRight, FileUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useData } from '../ui/useData'
 import { useEditor } from '../ui/editor'
 import { useToast } from '../ui/toast'
-import { BackBar, Money, Notice, Sheet } from '../ui/components'
+import { BackBar, Money, Notice } from '../ui/components'
 import { navigate, routeParams, useRoute } from '../ui/router'
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { lineSeries } from '../charts/configs'
 import { accountBalance, monthlySeries } from '../domain/stats'
 import { netWorth, netWorthSeries, portfolioEvolution, portfolioSummary } from '../domain/investments'
-import { formatNumber, formatPercent, parseAmount, formatMoney } from '../lib/money'
+import { formatNumber, formatPercent, formatMoney } from '../lib/money'
 import { formatShortDate, monthShort, todayISO } from '../lib/dates'
-import { ACCEPT_PDF, pickFile } from '../ui/files'
-import { parseTradeRepublic, type TRStatement } from '../import/tradeRepublic'
-import { readPdfInBrowser } from '../import/pdfText'
-import { saveSnapshot } from '../db/actions'
+import { BankBadge } from '../ui/BankBadge'
 import { db } from '../db/db'
-import { hash } from '../lib/text'
+import { useTRImport } from '../ui/useTRImport'
 import type { Account, PositionKind } from '../db/types'
 
 const TYPE_LABEL: Record<Account['type'], string> = { banco: 'Banco', tarjeta: 'Tarjeta', efectivo: 'Efectivo', inversion: 'Inversión' }
@@ -73,9 +70,7 @@ export function Wealth() {
         {others.length ? (
           others.map((a) => (
             <button key={a.id} className="list-item" onClick={() => navigate(`/movimientos?cuenta=${a.id}`)}>
-              <span className="tile sm" style={{ '--c': a.color } as React.CSSProperties} aria-hidden>
-                {a.name.slice(0, 1).toUpperCase()}
-              </span>
+              <BankBadge account={a} size={36} />
               <div className="grow">
                 <div className="primary-line ellipsis">{a.name}</div>
                 <div className="secondary-line">{TYPE_LABEL[a.type]}</div>
@@ -119,14 +114,35 @@ function InvestmentCard({ account }: { account: Account }) {
         <span className="meta">{p.date ? `Extracto del ${formatShortDate(p.date)}` : 'Sin extracto'}</span>
       </div>
       <Money cents={p.value} plain className="big" />
-      <GainLine gain={p.gain} ratio={p.gainRatio} contributed={p.contributed} />
+      <GainLine gain={p.gain} ratio={p.gainRatio} contributed={p.contributed} accountId={account.id} />
       {p.allocation.length > 0 && <Allocation items={p.allocation} />}
     </button>
   )
 }
 
-function GainLine({ gain, ratio, contributed }: { gain: number; ratio: number | null; contributed: number }) {
+function GainLine({ gain, ratio, contributed, accountId }: { gain: number; ratio: number | null; contributed: number; accountId: string }) {
   const { settings } = useData()
+  const { openAccount } = useEditor()
+  // Si lo aportado es 0 o negativo (o la ganancia supera 5 veces lo aportado) faltan aportaciones:
+  // mostrar una rentabilidad así sería engañoso
+  if (contributed <= 0 || (ratio !== null && ratio > 5)) {
+    return (
+      <p className="small" style={{ marginTop: 4 }}>
+        <span className="muted">Lo aportado ({formatMoney(contributed, { currency: settings.currency })}) no parece completo: faltan compras que no están en tus extractos. </span>
+        <span
+          role="button"
+          tabIndex={0}
+          style={{ color: 'var(--accent)', fontWeight: 600 }}
+          onClick={(e) => {
+            e.stopPropagation()
+            openAccount(accountId)
+          }}
+        >
+          Indicar lo aportado
+        </span>
+      </p>
+    )
+  }
   const tone = gain > 0 ? 'var(--positive)' : gain < 0 ? 'var(--negative)' : 'var(--muted)'
   return (
     <p className="small" style={{ marginTop: 4 }}>
@@ -167,9 +183,7 @@ export function InvestmentDetail({ id }: { id: string }) {
   const route = useRoute()
   const account = accounts.find((a) => a.id === id)
   const inv = accounts.filter((a) => a.type === 'inversion')
-  const [preview, setPreview] = useState<{ st: TRStatement; fileName: string } | null>(null)
-  const [manual, setManual] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const tr = useTRImport(account)
   const autoImport = routeParams(route).get('importar') === '1'
 
   const evolution = useMemo(() => (account ? portfolioEvolution(account, snapshots, transactions, inv) : []), [account, snapshots, transactions, inv])
@@ -184,24 +198,10 @@ export function InvestmentDetail({ id }: { id: string }) {
   )
 
   async function importPdf() {
-    const file = await pickFile(ACCEPT_PDF)
-    if (!file) return
-    setBusy(true)
-    try {
-      const lines = await readPdfInBrowser(await file.arrayBuffer())
-      const st = parseTradeRepublic(lines)
-      if (!st.positions.length && !st.cash) {
-        toast.show('No se ha podido leer el extracto. Puedes meter el valor total a mano.')
-        setManual(true)
-      } else setPreview({ st, fileName: file.name })
-    } catch {
-      toast.show('No se ha podido abrir el PDF. Puedes meter el valor total a mano.')
-      setManual(true)
-    } finally {
-      setBusy(false)
-      if (autoImport) navigate(`/patrimonio/${id}`, true)
-    }
+    await tr.start()
+    if (autoImport) navigate(`/patrimonio/${id}`, true)
   }
+
 
   if (!account) {
     return (
@@ -225,7 +225,7 @@ export function InvestmentDetail({ id }: { id: string }) {
         </button>
       </div>
 
-      {autoImport && !preview && !busy && (
+      {autoImport && !tr.busy && (
         <Notice icon={<FileUp size={20} />} title="Elige el PDF «Extracto del patrimonio neto»" actions={<button className="btn small primary" onClick={() => void importPdf()}>Elegir archivo</button>}>
           Lo encontrarás en la app de Trade Republic › Perfil › Documentos, guardado en Archivos.
         </Notice>
@@ -234,13 +234,13 @@ export function InvestmentDetail({ id }: { id: string }) {
       <section className="card">
         <div className="card-label">Valor actual</div>
         <Money cents={p.value} plain className="big" />
-        <GainLine gain={p.gain} ratio={p.gainRatio} contributed={p.contributed} />
+        <GainLine gain={p.gain} ratio={p.gainRatio} contributed={p.contributed} accountId={account.id} />
         {p.allocation.length > 0 && <Allocation items={p.allocation} />}
         <div className="row" style={{ gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-          <button className="btn small primary" onClick={() => void importPdf()} disabled={busy}>
-            <FileUp size={16} /> {busy ? 'Leyendo PDF…' : 'Importar extracto de Trade Republic'}
+          <button className="btn small primary" onClick={() => void importPdf()} disabled={tr.busy}>
+            <FileUp size={16} /> {tr.busy ? 'Leyendo PDF…' : 'Importar extracto de Trade Republic'}
           </button>
-          <button className="btn small" onClick={() => setManual(true)}>
+          <button className="btn small" onClick={tr.openManual}>
             Meter valor a mano
           </button>
         </div>
@@ -327,94 +327,8 @@ export function InvestmentDetail({ id }: { id: string }) {
         </div>
       </section>
 
-      {preview && <TRPreview account={account} st={preview.st} onClose={() => setPreview(null)} />}
-      {manual && <ManualValue account={account} onClose={() => setManual(false)} />}
+      {tr.element}
     </main>
   )
 }
 
-function TRPreview({ account, st, onClose }: { account: Account; st: TRStatement; onClose: () => void }) {
-  const toast = useToast()
-  return (
-    <Sheet
-      title="Extracto de Trade Republic"
-      onClose={onClose}
-      full
-      footer={
-        <button
-          className="btn primary block"
-          onClick={async () => {
-            const res = await saveSnapshot(account.id, st, 'pdf')
-            toast.show(res.saved ? 'Extracto guardado' : 'Este extracto ya estaba importado: no se ha duplicado')
-            onClose()
-          }}
-        >
-          Guardar foto de la cartera
-        </button>
-      }
-    >
-      {st.warnings.map((w) => (
-        <Notice key={w} tone="warn" icon={<TriangleAlert size={20} />} title="Revisa los datos">
-          {w}
-        </Notice>
-      ))}
-      <div className="card">
-        <div className="card-label">Total a {st.date ? formatShortDate(st.date) : 'fecha desconocida'}</div>
-        <Money cents={st.total} plain className="big" />
-      </div>
-      <div className="card flush list">
-        {st.positions.map((p, i) => (
-          <div key={i} className="list-item">
-            <div className="grow">
-              <div className="primary-line ellipsis">{p.name}</div>
-              <div className="secondary-line">
-                {p.kind === 'cripto' ? `Cripto${p.symbol ? ` · ${p.symbol}` : ''}` : `${p.kind === 'etf' ? 'ETF' : 'Acción'}${p.isin ? ` · ${p.isin}` : ''}`} · {formatNumber(p.units)} uds. × {formatNumber(p.price, 4)} €
-              </div>
-            </div>
-            <Money cents={p.value} plain />
-          </div>
-        ))}
-        <div className="list-item">
-          <span className="grow primary-line">Efectivo</span>
-          <Money cents={st.cash} plain />
-        </div>
-      </div>
-    </Sheet>
-  )
-}
-
-function ManualValue({ account, onClose }: { account: Account; onClose: () => void }) {
-  const toast = useToast()
-  const [date, setDate] = useState(todayISO())
-  const [value, setValue] = useState('')
-  const cents = parseAmount(value)
-  return (
-    <Sheet
-      title="Valor de la cartera a mano"
-      onClose={onClose}
-      footer={
-        <button
-          className="btn primary block"
-          disabled={cents === null || cents <= 0}
-          onClick={async () => {
-            const res = await saveSnapshot(account.id, { date, positions: [], cash: 0, total: cents!, fingerprint: hash(`manual|${account.id}|${date}|${cents}`) }, 'manual')
-            toast.show(res.saved ? 'Valor guardado' : 'Ya había un valor igual para esa fecha')
-            onClose()
-          }}
-        >
-          Guardar
-        </button>
-      }
-    >
-      <p className="muted small">Si el PDF no se puede leer, copia el «Total» del extracto o de la app de Trade Republic.</p>
-      <label className="field">
-        <span>Fecha del extracto</span>
-        <input className="input" type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
-      </label>
-      <label className="field">
-        <span>Valor total (euros)</span>
-        <input className="input" inputMode="decimal" placeholder="5.829,77" value={value} onChange={(e) => setValue(e.target.value)} />
-      </label>
-    </Sheet>
-  )
-}

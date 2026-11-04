@@ -10,6 +10,7 @@ import { useBackupExport, useBackupRestore } from '../ui/useBackup'
 import { transactionsToCSV } from '../domain/csvExport'
 import { todayISO } from '../lib/dates'
 import type { Settings } from '../db/types'
+import { ACCENT_PRESETS, isValidHex } from '../ui/theme'
 
 const CURRENCIES = [
   ['EUR', 'Euro (€)'],
@@ -96,6 +97,32 @@ export function SettingsScreen() {
               { value: 'oscuro', label: 'Oscura' },
             ]}
           />
+        </div>
+        <div className="field">
+          <span className="field-label">Color de la app</span>
+          <div className="swatches">
+            {ACCENT_PRESETS.map((p) => (
+              <button
+                key={p.color}
+                className="swatch"
+                style={{ background: p.color }}
+                aria-pressed={(settings.accentColor || ACCENT_PRESETS[0].color).toLowerCase() === p.color}
+                aria-label={p.name}
+                title={p.name}
+                onClick={() => set('accentColor', p.color === ACCENT_PRESETS[0].color ? '' : p.color)}
+              />
+            ))}
+            <label className="swatch" style={{ display: 'grid', placeItems: 'center', background: 'conic-gradient(#e53935, #fdd835, #43a047, #1e88e5, #8e24aa, #e53935)', position: 'relative', overflow: 'hidden' }} title="Otro color">
+              <input
+                type="color"
+                value={isValidHex(settings.accentColor) ? settings.accentColor : ACCENT_PRESETS[0].color}
+                onChange={(e) => set('accentColor', e.target.value)}
+                aria-label="Elegir otro color"
+                style={{ opacity: 0, position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+              />
+            </label>
+          </div>
+          <span className="meta">Botones, gráficas y resaltados. El modo claro u oscuro se ajusta solo.</span>
         </div>
         <label className="field">
           <span>Recordatorio de Trade Republic</span>
