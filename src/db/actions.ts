@@ -1,0 +1,265 @@
+import { db } from './db'
+import type { Account, ImportTemplate, Rule, Snapshot, Transaction, TxKind } from './types'
+import { categorize, ruleMatches, sortRules } from '../domain/categorize'
+import { dupKey, type PlanRow } from '../import/reconcile'
+import type { ShortcutPayment } from '../import/shortcut'
+import { accountForCard } from '../import/shortcut'
+import type { TRStatement } from '../import/tradeRepublic'
+import { normalize, uid } from '../lib/text'
+import { setSetting } from './settings'
+import { todayISO } from '../lib/dates'
+import { reseed } from './db'
+
+const now = () => Date.now()
+
+export function newTransaction(p: Partial<Transaction> & Pick<Transaction, 'accountId' | 'date' | 'amount' | 'description'>): Transaction {
+  const t = now()
+  return {
+    id: uid(),
+    categoryId: null,
+    kind: p.amount < 0 ? 'gasto' : 'ingreso',
+    status: 'confirmado',
+    source: 'manual',
+    tags: [],
+    createdAt: t,
+    updatedAt: t,
+    ...p,
+  }
+}
+
+export async function saveTransaction(tx: Transaction) {
+  await db.transactions.put({ ...tx, updatedAt: now() })
+}
+
+/** Borra un movimiento (y la otra pata si es una transferencia) */
+export async function deleteTransaction(tx: Transaction) {
+  await db.transaction('rw', db.transactions, async () => {
+    if (tx.transferId) await db.transactions.where('transferId').equals(tx.transferId).delete()
+    else await db.transactions.delete(tx.id)
+  })
+}
+
+/** Transferencia entre cuentas: dos movimientos enlazados que no cuentan como gasto ni ingreso */
+export async function createTransfer(p: { from: Account; to: Account; amount: number; date: string; description?: string; notes?: string }) {
+  const transferId = uid()
+  const kind: TxKind = p.to.type === 'inversion' ? 'aportacion' : 'transferencia'
+  const desc = p.description?.trim() || `Transferencia ${p.from.name} → ${p.to.name}`
+  const categoryId = kind === 'aportacion' ? 'cat-inversion' : 'cat-transferencia'
+  const amount = Math.abs(p.amount)
+  await db.transactions.bulkAdd([
+    newTransaction({ accountId: p.from.id, date: p.date, amount: -amount, description: desc, kind, categoryId, transferId, notes: p.notes }),
+    newTransaction({ accountId: p.to.id, date: p.date, amount, description: desc, kind, categoryId, transferId, notes: p.notes }),
+  ])
+}
+
+/**
+ * "Aplicar siempre a este concepto": crea (o actualiza) una regla del usuario y
+ * recategoriza los movimientos anteriores que encajan. Devuelve cuántos cambió.
+ */
+export async function applyRuleEverywhere(keyword: string, categoryId: string, kind?: TxKind): Promise<number> {
+  const kw = normalize(keyword)
+  if (!kw) return 0
+  const existing = await db.rules.filter((r) => r.custom && normalize(r.keyword) === kw).first()
+  const rule: Rule = existing
+    ? { ...existing, categoryId, kind }
+    : { id: uid(), keyword: kw, categoryId, kind, custom: true, createdAt: now() }
+  await db.rules.put(rule)
+  let changed = 0
+  await db.transaction('rw', db.transactions, async () => {
+    await db.transactions
+      .filter((t) => !t.splits?.length && !t.transferId && ruleMatches(rule, t.description) && t.categoryId !== categoryId)
+      .modify((t) => {
+        t.categoryId = categoryId
+        if (kind) t.kind = kind
+        t.updatedAt = now()
+        changed++
+      })
+  })
+  return changed
+}
+
+/** Vuelve a aplicar todas las reglas a los movimientos sin categoría */
+export async function recategorizeUncategorized(): Promise<number> {
+  const rules = sortRules(await db.rules.toArray())
+  let changed = 0
+  await db.transactions
+    .filter((t) => !t.categoryId && !t.transferId && !t.splits?.length)
+    .modify((t) => {
+      const c = categorize(t.description, t.amount, rules, true)
+      if (c.categoryId) {
+        t.categoryId = c.categoryId
+        if (c.kind === 'aportacion') t.kind = 'aportacion'
+        changed++
+      }
+    })
+  return changed
+}
+
+export interface StatementImportInput {
+  rows: PlanRow[]
+  accountId: string
+  fileName: string
+  /** Categoría elegida a mano en la vista previa (por índice de fila) */
+  categoryOverrides?: Record<number, string | null>
+}
+
+/** Guarda el extracto según la vista previa: crea los nuevos y concilia los emparejados */
+export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {} }: StatementImportInput) {
+  const rules = sortRules(await db.rules.toArray())
+  const importId = uid()
+  let added = 0
+  let reconciled = 0
+  let skipped = 0
+  await db.transaction('rw', db.transactions, db.imports, async () => {
+    for (const [i, r] of rows.entries()) {
+      if (!r.include) {
+        skipped++
+        continue
+      }
+      const mv = r.movement
+      const auto = categorize(mv.description, mv.amount, rules, true)
+      const override = categoryOverrides[i]
+      const key = dupKey(accountId, mv.date, mv.amount, mv.description)
+      if (r.matchId && (r.status === 'conciliar' || r.status === 'dudoso')) {
+        const existing = await db.transactions.get(r.matchId)
+        if (existing) {
+          await db.transactions.put({
+            ...existing,
+            accountId,
+            date: mv.date,
+            status: 'confirmado',
+            bankDate: mv.date,
+            bankDescription: mv.description,
+            dupKey: key,
+            categoryId: override !== undefined ? override : (existing.categoryId ?? auto.categoryId),
+            kind: existing.kind === 'gasto' || existing.kind === 'ingreso' ? (auto.kind === 'aportacion' ? 'aportacion' : existing.kind) : existing.kind,
+            importId,
+            updatedAt: now(),
+          })
+          reconciled++
+          continue
+        }
+      }
+      await db.transactions.add(
+        newTransaction({
+          accountId,
+          date: mv.date,
+          amount: mv.amount,
+          description: mv.description,
+          categoryId: override !== undefined ? override : auto.categoryId,
+          kind: auto.kind,
+          source: 'extracto',
+          status: 'confirmado',
+          bankDate: mv.date,
+          bankDescription: mv.description,
+          dupKey: key,
+          importId,
+        }),
+      )
+      added++
+    }
+    await db.imports.add({ id: importId, type: 'extracto', fileName, accountId, added, reconciled, skipped, createdAt: now() })
+  })
+  return { added, reconciled, skipped }
+}
+
+/** Importa los pagos nuevos del Atajo como pendientes de confirmar */
+export async function importShortcutPayments(payments: ShortcutPayment[], accounts: Account[], fallbackAccountId: string | null, fileName: string) {
+  const rules = sortRules(await db.rules.toArray())
+  const known = new Set((await db.transactions.where('source').equals('atajo').toArray()).map((t) => t.externalId).filter(Boolean) as string[])
+  const fresh = payments.filter((p) => !known.has(p.externalId))
+  const usable = accounts.filter((a) => a.type !== 'inversion' && !a.archived)
+  const toAdd: Transaction[] = []
+  for (const p of fresh) {
+    const accountId = accountForCard(p.card, usable, fallbackAccountId)
+    if (!accountId) continue
+    const c = categorize(p.merchant, p.amount, rules, true)
+    toAdd.push(
+      newTransaction({
+        accountId,
+        date: p.date,
+        amount: p.amount,
+        description: p.merchant,
+        categoryId: c.categoryId,
+        kind: c.kind,
+        status: 'pendiente',
+        source: 'atajo',
+        externalId: p.externalId,
+        notes: p.card ? `Apple Pay · ${p.card}` : 'Apple Pay',
+      }),
+    )
+  }
+  await db.transaction('rw', db.transactions, db.imports, async () => {
+    if (toAdd.length) await db.transactions.bulkAdd(toAdd)
+    await db.imports.add({ id: uid(), type: 'atajo', fileName, added: toAdd.length, reconciled: 0, skipped: payments.length - toAdd.length, createdAt: now() })
+  })
+  return { added: toAdd.length, skipped: payments.length - toAdd.length }
+}
+
+export async function confirmTransactions(ids: string[]) {
+  await db.transactions.where('id').anyOf(ids).modify({ status: 'confirmado', updatedAt: now() })
+}
+
+export async function saveTemplate(t: Omit<ImportTemplate, 'id' | 'createdAt'> & { id?: string }) {
+  const existing = await db.templates.where('signature').equals(t.signature).first()
+  await db.templates.put({ ...t, id: existing?.id ?? t.id ?? uid(), createdAt: existing?.createdAt ?? now() })
+}
+
+export type SnapshotResult = { saved: true; snapshot: Snapshot } | { saved: false; reason: 'duplicado'; snapshot: Snapshot }
+
+/** Guarda la foto de la cartera. Si el mismo extracto ya estaba, no lo duplica. */
+export async function saveSnapshot(accountId: string, st: Pick<TRStatement, 'date' | 'positions' | 'cash' | 'total' | 'fingerprint'>, source: 'pdf' | 'manual'): Promise<SnapshotResult> {
+  const dup = await db.snapshots.where('fingerprint').equals(st.fingerprint).filter((s) => s.accountId === accountId).first()
+  if (dup) return { saved: false, reason: 'duplicado', snapshot: dup }
+  const snapshot: Snapshot = {
+    id: uid(),
+    accountId,
+    date: st.date ?? todayISO(),
+    positions: st.positions,
+    cash: st.cash,
+    total: st.total,
+    source,
+    fingerprint: st.fingerprint,
+    createdAt: now(),
+  }
+  await db.transaction('rw', db.snapshots, db.imports, db.settings, async () => {
+    await db.snapshots.add(snapshot)
+    await db.imports.add({ id: uid(), type: 'tradeRepublic', fileName: source === 'pdf' ? 'Extracto del patrimonio neto' : 'Valor manual', accountId, added: 1, reconciled: 0, skipped: 0, createdAt: now() })
+    await setSetting('lastTRImportAt', now())
+  })
+  return { saved: true, snapshot }
+}
+
+export async function deleteAccount(id: string) {
+  await db.transaction('rw', db.accounts, db.transactions, db.snapshots, async () => {
+    await db.transactions.where('accountId').equals(id).delete()
+    await db.snapshots.where('accountId').equals(id).delete()
+    await db.accounts.delete(id)
+  })
+}
+
+/** Borra la categoría: sus movimientos y subcategorías pasan a la categoría padre (o sin categoría) */
+export async function deleteCategory(id: string) {
+  const cat = await db.categories.get(id)
+  if (!cat) return
+  const target = cat.parentId
+  await db.transaction('rw', db.categories, db.transactions, db.rules, db.budgets, async () => {
+    const children = await db.categories.where('parentId').equals(id).toArray()
+    for (const ch of children) await db.categories.update(ch.id, { parentId: null })
+    await db.transactions.where('categoryId').equals(id).modify({ categoryId: target })
+    await db.transactions.filter((t) => !!t.splits?.some((s) => s.categoryId === id)).modify((t) => {
+      t.splits = t.splits!.map((s) => (s.categoryId === id ? { ...s, categoryId: target } : s))
+    })
+    await db.rules.where('categoryId').equals(id).delete()
+    await db.budgets.where('categoryId').equals(id).delete()
+    await db.categories.delete(id)
+  })
+}
+
+/** Borra absolutamente todo y deja la app como recién instalada */
+export async function wipeAll() {
+  await db.transaction('rw', db.tables, async () => {
+    for (const t of db.tables) await t.clear()
+  })
+  await reseed()
+}

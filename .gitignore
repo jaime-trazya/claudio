@@ -1,0 +1,25 @@
+# Dependencias y build
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+*.log
+.vite/
+.taste-skill/
+
+# PRIVACIDAD: no subir nunca extractos ni datos reales.
+# Solo se permiten los archivos inventados de la carpeta ejemplos/.
+*.pdf
+*.csv
+*.xls
+*.xlsx
+*.json
+!ejemplos/**
+!package.json
+!package-lock.json
+!tsconfig*.json
+!public/**/*.json
+!.claude/**
+copia-claudio-*.json

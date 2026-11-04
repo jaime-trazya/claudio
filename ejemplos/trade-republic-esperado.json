@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-31",
+  "securities": [
+    {
+      "units": 25.123456,
+      "name": "iShares Core MSCI World USD (Acc)",
+      "isin": "IE00B4L5Y983",
+      "price": 98.45,
+      "value": 2473.4
+    },
+    {
+      "units": 10.5,
+      "name": "Vanguard FTSE All-World UCITS ETF",
+      "name2": "USD Accumulating",
+      "isin": "IE00BK5BQT80",
+      "price": 125.32,
+      "value": 1315.86
+    },
+    {
+      "units": 2,
+      "name": "Apple Inc.",
+      "isin": "US0378331005",
+      "price": 210.15,
+      "value": 420.3
+    }
+  ],
+  "cryptos": [
+    {
+      "units": 0.012345,
+      "name": "Bitcoin (BTC)",
+      "price": 58432.1,
+      "value": 721.34
+    },
+    {
+      "units": 0.25,
+      "name": "Ethereum (ETH)",
+      "price": 2345.67,
+      "value": 586.42
+    }
+  ],
+  "efectivo": 312.45,
+  "totalValores": 4209.56,
+  "totalCripto": 1307.76,
+  "total": 5829.77
+}
