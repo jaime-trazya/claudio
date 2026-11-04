@@ -150,7 +150,10 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 ### Extracto del patrimonio neto
 
 1. En la app de Trade Republic, descarga el PDF **«Extracto del patrimonio neto»** (según la versión de la app, en **Perfil → Documentos** o en los informes de la cuenta) y guárdalo en **Archivos**.
-2. En Claudio: pulsa **Extracto de inversión** en Inicio (o **Patrimonio → Trade Republic · inversión → Importar extracto de Trade Republic**) y elige el PDF. Se lee en el propio iPhone, sin enviarlo a ningún sitio.
+2. En Claudio, elige el PDF desde cualquiera de estos sitios (si aún no tienes cuenta de inversión, se crea sola «Trade Republic · inversión»):
+   - **Patrimonio → Importar extracto de patrimonio** (debajo del total).
+   - **Importar extracto** (Inicio): reconoce que es el extracto de patrimonio y lo guarda como foto de tu cartera.
+   - **Extracto de inversión** en Inicio. Se lee en el propio iPhone, sin enviarlo a ningún sitio.
 3. Revisa la vista previa (fecha, posiciones con ISIN, unidades, precio y valor, criptoactivos, efectivo y total) y pulsa **Guardar foto de la cartera**.
    - Si importas dos veces el mismo extracto, no se duplica.
    - Si el PDF no se puede leer, usa **Meter valor a mano** con el total.

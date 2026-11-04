@@ -14,6 +14,7 @@ import { MultiImport } from './MultiImport'
 import { fileFingerprint } from '../lib/text'
 import { db } from '../db/db'
 import { useUndo } from '../ui/useUndo'
+import { useTRImport } from '../ui/useTRImport'
 import { applyMapping, bankClosingBalance, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
 import { categorize, effectiveRules } from '../domain/categorize'
@@ -54,6 +55,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [seenBefore, setSeenBefore] = useState<string | null>(null)
   const [bankName, setBankName] = useState<string | null>(null)
   const undo = useUndo()
+  const tr = useTRImport()
   const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
   const [limit, setLimit] = useState(200)
   const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
@@ -84,9 +86,8 @@ export function ImportStatement({ route }: { route: string }) {
         const { pdfToTables } = await import('../import/pdfTable')
         const lines = await readPdfLinesInBrowser(buf)
         if (lines.some((l) => /extracto del patrimonio neto/i.test(l.text))) {
-          const inv = accounts.find((a) => a.type === 'inversion')
-          toast.show('Este PDF es el extracto del patrimonio de Trade Republic: impórtalo desde Patrimonio')
-          if (inv) navigate(`/patrimonio/${inv.id}?importar=1`, true)
+          // Es el extracto de patrimonio de Trade Republic: se importa como foto de la cartera
+          await tr.fromLines(lines.map((l) => l.text))
           return
         }
         const firstHeader = Math.max(0, lines.findIndex((l) => /\b(fecha|date)\b/i.test(l.text) && l.items.length >= 3))
@@ -250,7 +251,8 @@ export function ImportStatement({ route }: { route: string }) {
           <div className="card stack" style={{ gap: 8 }}>
             <strong>Qué hace la importación</strong>
             <ul className="muted small" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
-              <li>Lee extractos en PDF (CaixaBank, Trade Republic, Revolut…), Excel y CSV, y detecta las columnas de fecha, concepto e importe (también entradas y salidas por separado).</li>
+              <li>Lee extractos en PDF (CaixaBank, imagin, Trade Republic, Revolut…), Excel y CSV, y detecta las columnas de fecha, concepto e importe (también entradas y salidas por separado).</li>
+              <li>Si eliges el «Extracto del patrimonio neto» de Trade Republic, guarda la foto de tu cartera (posiciones, cripto y efectivo).</li>
               <li>Marca los duplicados de importaciones anteriores y los deja fuera.</li>
               <li>Empareja los pagos del Atajo y los añadidos a mano (mismo importe, hasta 3 días de diferencia) y los confirma sin duplicarlos.</li>
               <li>Antes de guardar verás una vista previa.</li>
@@ -412,6 +414,7 @@ export function ImportStatement({ route }: { route: string }) {
         </>
       )}
 
+      {tr.element}
       {multiOpen && tables && (
         <MultiImport
           tables={tables}

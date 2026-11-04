@@ -34,7 +34,7 @@ export function Home() {
   const toast = useToast()
   const shortcut = useShortcutImport()
   const [quick, setQuick] = useState(false)
-  const investment = accounts.find((a) => a.type === 'inversion' && !a.archived)
+  const investment = accounts.find((a) => a.type === 'inversion' && !a.archived && a.bank === 'traderepublic') ?? accounts.find((a) => a.type === 'inversion' && !a.archived)
   const tr = useTRImport(investment)
   const exportBackup = useBackupExport()
   const today = todayISO()

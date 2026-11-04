@@ -29,6 +29,7 @@ export function Wealth() {
   const build = useMemo(() => lineSeries(series.map((s) => ({ label: monthShort(Number(s.key.slice(5)) - 1), value: s.total })), settings.currency, { mainLabel: 'Patrimonio' }), [series, settings.currency])
   const investments = active.filter((a) => a.type === 'inversion')
   const others = active.filter((a) => a.type !== 'inversion')
+  const tr = useTRImport(investments.find((a) => a.bank === 'traderepublic') ?? investments[0])
 
   return (
     <main className="screen">
@@ -58,6 +59,10 @@ export function Wealth() {
         <p className="meta" style={{ marginTop: 6 }}>Saldo de las cuentas más el valor de las inversiones al final de cada mes.</p>
       </section>
 
+      <button className="btn block" onClick={() => void tr.start()} disabled={tr.busy}>
+        <FileUp size={18} /> {tr.busy ? 'Leyendo PDF…' : 'Importar extracto de patrimonio'}
+      </button>
+
       <div className="section-head">
         <h2 className="section-title">Cuentas</h2>
         {others.length > 1 && (
@@ -86,12 +91,13 @@ export function Wealth() {
         investments.map((a) => <InvestmentCard key={a.id} account={a} />)
       ) : (
         <div className="card stack">
-          <p className="muted">Crea una cuenta de tipo «Inversión» para Trade Republic. Las transferencias del banco con «Trade Republic» en el concepto contarán como aportación, no como gasto.</p>
+          <p className="muted">Importa el «Extracto del patrimonio neto» de Trade Republic con el botón de arriba (se crea la cuenta de inversión sola) o crea una cuenta de tipo «Inversión» a mano.</p>
           <button className="btn" onClick={() => openAccount()}>
             <Plus size={16} /> Crear cuenta de inversión
           </button>
         </div>
       )}
+      {tr.element}
     </main>
   )
 }

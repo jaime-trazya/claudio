@@ -394,3 +394,27 @@ export async function correctBalance(account: Account, current: number, real: nu
   )
   return diff
 }
+
+/**
+ * Cuenta de inversión para el extracto de patrimonio: la de Trade Republic (o la primera de inversión).
+ * Si no hay ninguna, crea «Trade Republic · inversión», enlazada a «Trade Republic · efectivo» si existe.
+ */
+export async function ensureInvestmentAccount(accounts: Account[]): Promise<Account> {
+  const inv = accounts.filter((a) => a.type === 'inversion' && !a.archived)
+  const found = inv.find((a) => a.bank === 'traderepublic') ?? inv[0]
+  if (found) return found
+  const cash = accounts.find((a) => a.bank === 'traderepublic' && a.type !== 'inversion')
+  const acc: Account = {
+    id: uid(),
+    name: 'Trade Republic · inversión',
+    type: 'inversion',
+    bank: 'traderepublic',
+    initialBalance: 0,
+    color: '#000000',
+    cashAccountId: cash?.id,
+    order: accounts.length,
+    createdAt: now(),
+  }
+  await db.accounts.add(acc)
+  return acc
+}
