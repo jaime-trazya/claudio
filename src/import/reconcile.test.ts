@@ -125,3 +125,14 @@ describe('duplicados reforzados', () => {
     expect(plan[0]).toMatchObject({ status: 'duplicado', include: false, elsewhere: 'otra' })
   })
 })
+
+describe('traspaso apuntado a mano entre dos bancos', () => {
+  it('al importar los extractos de ambos lados se empareja con cada pata y no se duplica', () => {
+    const out = tx({ id: 'out', accountId: 'rev', date: '2026-11-05', amount: -20200, description: 'Traspaso a Trade Republic', kind: 'transferencia', transferId: 'T1', source: 'manual' })
+    const inn = tx({ id: 'in', accountId: 'tr', date: '2026-11-05', amount: 20200, description: 'Traspaso a Trade Republic', kind: 'transferencia', transferId: 'T1', source: 'manual' })
+    const rev = planImport([mv('2026-11-05', -20200, 'To Trade Republic')], 'rev', [out, inn])
+    expect(rev[0]).toMatchObject({ status: 'conciliar', matchId: 'out' })
+    const tr = planImport([mv('2026-11-06', 20200, 'Transferencia entrante de Revolut')], 'tr', [out, inn])
+    expect(tr[0]).toMatchObject({ status: 'conciliar', matchId: 'in' })
+  })
+})
