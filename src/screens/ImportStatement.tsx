@@ -13,6 +13,7 @@ import { detectBank } from '../domain/banks'
 import { MultiImport } from './MultiImport'
 import { fileFingerprint } from '../lib/text'
 import { db } from '../db/db'
+import { useUndo } from '../ui/useUndo'
 import { applyMapping, bankClosingBalance, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
 import { categorize, effectiveRules } from '../domain/categorize'
@@ -52,6 +53,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [fingerprint, setFingerprint] = useState('')
   const [seenBefore, setSeenBefore] = useState<string | null>(null)
   const [bankName, setBankName] = useState<string | null>(null)
+  const undo = useUndo()
   const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
   const [limit, setLimit] = useState(200)
   const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
@@ -169,7 +171,7 @@ export function ImportStatement({ route }: { route: string }) {
     try {
       const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null, fingerprint })
       await setSetting('defaultAccountId', accountId)
-      toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}${res.adjusted ? ' · saldo cuadrado con el banco' : ''}`)
+      toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}${res.adjusted ? ' · saldo cuadrado con el banco' : ''}`, { action: undo })
       navigate(`/movimientos?cuenta=${accountId}`, true)
     } finally {
       setBusy(false)

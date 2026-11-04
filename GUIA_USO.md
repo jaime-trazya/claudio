@@ -207,9 +207,18 @@ La app te avisa en Inicio si han pasado **más de 30 días** desde la última co
 
 También puedes **Exportar movimientos a CSV** para abrirlos en Numbers o Excel.
 
-### Borrar todo
+### Deshacer y volver atrás
 
-**Ajustes → Borrar todos los datos** pide doble confirmación (hay que escribir BORRAR). Haz antes una copia.
+Arriba del todo en **Ajustes → Tus datos**:
+
+- **Deshacer lo último**: la app guarda un punto justo antes de cada acción importante (importar un extracto o los pagos del Atajo, aplicar o importar reglas, corregir un saldo, borrar una cuenta o categoría, restaurar una copia, eliminar todo). Al deshacer, todo vuelve a como estaba justo antes. Si te arrepientes, la siguiente vez aparece **Rehacer**.
+- Tras importar, el aviso que sale abajo también tiene un botón **Deshacer**.
+- **Volver a como estaba hace…**: una foto automática al día (al abrir la app) de los últimos 30 días, y los puntos de cada acción. Toca uno para volver ahí.
+- Los puntos se guardan comprimidos en el iPhone y no entran en la copia de seguridad.
+
+### Eliminar todos los datos
+
+**Ajustes → Tus datos → Eliminar todos los datos** pide doble confirmación (hay que escribir BORRAR) y **se puede deshacer**. Si quieres que no quede nada, usa después **Eliminar también el historial**: eso ya no se puede deshacer, salvo con una copia de seguridad.
 
 ---
 

@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Download, HardDrive, Smartphone, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, Download, HardDrive, History, Smartphone, Trash2, Undo2, Upload } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { listRestorePoints, undoLast } from '../db/history'
+import { relativeTime } from '../lib/dates'
+import { useUndo } from '../ui/useUndo'
 import { useData } from '../ui/useData'
 import { useToast } from '../ui/toast'
 import { Segmented } from '../ui/components'
@@ -20,6 +24,12 @@ const CURRENCIES = [
   ['MXN', 'Peso mexicano (MX$)'],
 ]
 
+/** "Antes de importar «x»" → "Deshacer: importar «x»"; "Antes de deshacer: …" → "Rehacer: …" */
+function actionText(label: string): string {
+  if (label.startsWith('Antes de deshacer: ')) return `Rehacer: ${label.slice('Antes de deshacer: '.length)}`
+  return `Deshacer: ${label.replace(/^Antes de /, '')}`
+}
+
 function Row({ href, label, value }: { href: string; label: string; value?: string }) {
   return (
     <a className="list-item" href={href} style={{ color: 'inherit' }}>
@@ -37,6 +47,10 @@ export function SettingsScreen() {
   const restore = useBackupRestore()
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const [usage, setUsage] = useState<string | null>(null)
+  const points = useLiveQuery(() => listRestorePoints(), [])
+  const lastAction = points?.find((p) => p.kind === 'accion')
+  const dailyCount = points?.filter((p) => p.kind === 'diaria').length ?? 0
+  const undo = useUndo()
 
   useEffect(() => {
     void navigator.storage?.persisted?.().then(setPersisted)
@@ -51,7 +65,95 @@ export function SettingsScreen() {
       <div className="title-row">
         <h1 className="title">Ajustes</h1>
       </div>
+      <div className="section-head">
+        <h2 className="section-title">Tus datos</h2>
+      </div>
 
+      <section className="card flush list" aria-label="Deshacer y borrar">
+        <button
+          className="list-item"
+          disabled={!lastAction}
+          onClick={async () => {
+            if (!lastAction) return
+            const ok = await toast.confirm({ title: 'Deshacer lo último', message: `${actionText(lastAction.label)} (${relativeTime(lastAction.createdAt)}). Todo vuelve a como estaba justo antes.`, confirmLabel: 'Deshacer' })
+            if (!ok) return
+            const l = await undoLast()
+            toast.show(l ? 'Hecho: todo está como antes' : 'No hay nada que deshacer')
+          }}
+        >
+          <Undo2 size={20} className="muted" />
+          <div className="grow">
+            <div className="primary-line">Deshacer lo último</div>
+            <div className="secondary-line ellipsis">{lastAction ? `${actionText(lastAction.label)} · ${relativeTime(lastAction.createdAt)}` : 'No hay acciones recientes'}</div>
+          </div>
+        </button>
+        <a className="list-item" href="#/ajustes/historial" style={{ color: 'inherit' }}>
+          <History size={20} className="muted" />
+          <div className="grow">
+            <div className="primary-line">Volver a como estaba hace…</div>
+            <div className="secondary-line">{dailyCount ? `${dailyCount} días guardados · y antes de cada acción` : 'Historial de puntos de restauración'}</div>
+          </div>
+          <ChevronRight size={18} className="chev" />
+        </a>
+        <button
+          className="list-item"
+          style={{ color: 'var(--negative)' }}
+          onClick={async () => {
+            const first = await toast.confirm({
+              title: '¿Eliminar todos los datos?',
+              message: 'Se borrarán cuentas, movimientos, reglas, presupuestos, objetivos e inversiones de este dispositivo.',
+              confirmLabel: 'Continuar',
+              danger: true,
+            })
+            if (!first) return
+            const second = await toast.confirm({
+              title: 'Confirmación final',
+              message: 'Podrás deshacerlo desde «Deshacer lo último» mientras no borres también el historial. Si quieres que no quede nada, usa «Eliminar también el historial» después.',
+              confirmLabel: 'Eliminar todo',
+              danger: true,
+              typeToConfirm: 'BORRAR',
+            })
+            if (!second) return
+            await wipeAll(true)
+            toast.show('Datos eliminados', { action: undo })
+          }}
+        >
+          <Trash2 size={20} />
+          <div className="grow">
+            <div className="primary-line">Eliminar todos los datos</div>
+            <div className="secondary-line">Con doble confirmación. Se puede deshacer.</div>
+          </div>
+        </button>
+        {(points?.length ?? 0) > 0 && (
+          <button
+            className="list-item"
+            style={{ color: 'var(--negative)' }}
+            onClick={async () => {
+              const ok = await toast.confirm({
+                title: 'Eliminar todo, también el historial',
+                message: 'Se borran los datos y todos los puntos para deshacer. No se podrá recuperar nada salvo con una copia de seguridad.',
+                confirmLabel: 'Eliminar para siempre',
+                danger: true,
+                typeToConfirm: 'BORRAR',
+              })
+              if (!ok) return
+              await wipeAll(false)
+              toast.show('Todo eliminado, también el historial')
+            }}
+          >
+            <Trash2 size={20} />
+            <div className="grow">
+              <div className="primary-line">Eliminar también el historial</div>
+              <div className="secondary-line">{points!.length} puntos para deshacer guardados</div>
+            </div>
+          </button>
+        )}
+      </section>
+
+
+      <div className="section-head">
+        <h2 className="section-title">Preferencias</h2>
+      </div>
       <section className="card stack">
         <label className="field">
           <span>Moneda</span>
@@ -193,34 +295,6 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="card stack">
-        <strong>Borrar todos los datos</strong>
-        <p className="muted small">Elimina cuentas, movimientos, reglas, presupuestos e inversiones de este dispositivo. Haz antes una copia de seguridad.</p>
-        <button
-          className="btn danger"
-          onClick={async () => {
-            const first = await toast.confirm({
-              title: '¿Borrar todos los datos?',
-              message: 'Se eliminará todo lo guardado en este dispositivo. No se puede deshacer.',
-              confirmLabel: 'Continuar',
-              danger: true,
-            })
-            if (!first) return
-            const second = await toast.confirm({
-              title: 'Confirmación final',
-              message: 'Última oportunidad: si no tienes copia de seguridad, perderás tus datos para siempre.',
-              confirmLabel: 'Borrar todo',
-              danger: true,
-              typeToConfirm: 'BORRAR',
-            })
-            if (!second) return
-            await wipeAll()
-            toast.show('Datos borrados')
-          }}
-        >
-          <Trash2 size={18} /> Borrar todos los datos
-        </button>
-      </section>
       <p className="meta" style={{ textAlign: 'center' }}>Claudio · sin servidor, todo se guarda en este dispositivo</p>
     </main>
   )

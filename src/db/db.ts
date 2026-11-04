@@ -1,5 +1,6 @@
 import Dexie, { type Table, type Transaction as DexieTx } from 'dexie'
 import type { Account, Budget, Category, Goal, ImportLog, ImportTemplate, Rule, Setting, Snapshot, Transaction } from './types'
+import type { RestorePoint } from './history'
 import { DEFAULTS_VERSION, defaultCategories, defaultCategoriesWithVersion, defaultRules } from '../domain/defaults'
 
 export const DB_NAME = 'claudio-finanzas'
@@ -24,6 +25,7 @@ export class FinanzasDB extends Dexie {
   imports!: Table<ImportLog, string>
   settings!: Table<Setting, string>
   goals!: Table<Goal, string>
+  restorePoints!: Table<RestorePoint, string>
 
   constructor(name = DB_NAME) {
     super(name)
@@ -60,6 +62,9 @@ export class FinanzasDB extends Dexie {
 
     // Versión 3: objetivos de ahorro
     this.version(3).stores({ goals: 'id, accountId' })
+
+    // Versión 4: historial para deshacer (puntos de restauración; no entran en la copia)
+    this.version(4).stores({ restorePoints: 'id, createdAt, kind' })
 
     this.on('populate', (tx) => seed(tx))
   }

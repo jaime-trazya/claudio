@@ -10,6 +10,7 @@ import { bankOrder } from '../domain/stats'
 import { getSettings, setSetting } from './settings'
 import { todayISO } from '../lib/dates'
 import { reseed } from './db'
+import { createRestorePoint } from './history'
 
 const now = () => Date.now()
 
@@ -57,9 +58,10 @@ export async function createTransfer(p: { from: Account; to: Account; amount: nu
  * "Aplicar siempre a este concepto": crea (o actualiza) una regla del usuario y
  * recategoriza los movimientos anteriores que encajan. Devuelve cuántos cambió.
  */
-export async function applyRuleEverywhere(keyword: string, categoryId: string, kind?: TxKind): Promise<number> {
+export async function applyRuleEverywhere(keyword: string, categoryId: string, kind?: TxKind, savePoint = true): Promise<number> {
   const kw = normalize(keyword)
   if (!kw) return 0
+  if (savePoint) await createRestorePoint(`Antes de la regla «${kw}»`)
   const existing = await db.rules.filter((r) => r.custom && normalize(r.keyword) === kw).first()
   const rule: Rule = existing
     ? { ...existing, categoryId, kind }
@@ -105,10 +107,13 @@ export interface StatementImportInput {
   /** Saldo del banco al final del extracto: si se indica, se ajusta el saldo inicial para cuadrar */
   bankBalance?: { date: string; balance: number } | null
   fingerprint?: string
+  /** false si ya se guardó un punto de restauración antes (importación de varias tablas) */
+  savePoint?: boolean
 }
 
 /** Guarda el extracto según la vista previa: crea los nuevos y concilia los emparejados */
-export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {}, bankBalance, fingerprint }: StatementImportInput) {
+export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {}, bankBalance, fingerprint, savePoint = true }: StatementImportInput) {
+  if (savePoint) await createRestorePoint(`Antes de importar «${fileName}»`)
   const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const importId = uid()
   let added = 0
@@ -192,6 +197,7 @@ export async function matchBankBalance(accountId: string, bank: { date: string; 
 
 /** Importa los pagos nuevos del Atajo como pendientes de confirmar */
 export async function importShortcutPayments(payments: ShortcutPayment[], accounts: Account[], fallbackAccountId: string | null, fileName: string) {
+  await createRestorePoint('Antes de importar pagos del Atajo')
   const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const known = new Set((await db.transactions.where('source').equals('atajo').toArray()).map((t) => t.externalId).filter(Boolean) as string[])
   const fresh = payments.filter((p) => !known.has(p.externalId))
@@ -258,6 +264,7 @@ export async function saveSnapshot(accountId: string, st: Pick<TRStatement, 'dat
 }
 
 export async function deleteAccount(id: string) {
+  await createRestorePoint(`Antes de borrar la cuenta «${(await db.accounts.get(id))?.name ?? ''}»`)
   await db.transaction('rw', db.accounts, db.transactions, db.snapshots, async () => {
     await db.transactions.where('accountId').equals(id).delete()
     await db.snapshots.where('accountId').equals(id).delete()
@@ -269,6 +276,7 @@ export async function deleteAccount(id: string) {
 export async function deleteCategory(id: string) {
   const cat = await db.categories.get(id)
   if (!cat) return
+  await createRestorePoint(`Antes de borrar la categoría «${cat.name}»`)
   const target = cat.parentId
   await db.transaction('rw', db.categories, db.transactions, db.rules, db.budgets, async () => {
     const children = await db.categories.where('parentId').equals(id).toArray()
@@ -283,10 +291,14 @@ export async function deleteCategory(id: string) {
   })
 }
 
-/** Borra absolutamente todo y deja la app como recién instalada */
-export async function wipeAll() {
+/**
+ * Borra todos los datos y deja la app como recién instalada.
+ * Con keepHistory (por defecto) guarda antes un punto para poder deshacerlo; si no, borra también el historial.
+ */
+export async function wipeAll(keepHistory = true) {
+  if (keepHistory) await createRestorePoint('Antes de borrar todos los datos')
   await db.transaction('rw', db.tables, async () => {
-    for (const t of db.tables) await t.clear()
+    for (const t of db.tables) if (keepHistory ? t.name !== 'restorePoints' : true) await t.clear()
   })
   await reseed()
 }
@@ -316,6 +328,7 @@ export async function importRules(data: unknown): Promise<{ added: number; skipp
   const file = data as Partial<RulesFile>
   if (!file || file.type !== RULES_FILE_TYPE || !Array.isArray(file.rules)) throw new Error('El archivo no es un archivo de reglas de esta app.')
   const cats = new Set(await db.categories.toCollection().primaryKeys())
+  await createRestorePoint('Antes de importar reglas o perfil')
   let added = 0
   let skipped = 0
   let changed = 0
@@ -325,7 +338,7 @@ export async function importRules(data: unknown): Promise<{ added: number; skipp
       continue
     }
     const kind = r.kind === 'aportacion' || r.kind === 'transferencia' || r.kind === 'ingreso' || r.kind === 'gasto' ? r.kind : undefined
-    changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined)
+    changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined, false)
     added++
   }
   // Perfil: presupuestos (solo para categorías que aún no tienen) y tu nombre (si no lo habías puesto)
@@ -375,6 +388,7 @@ export async function mirrorTransfers(fromId: string, toId: string, pattern: Reg
 export async function correctBalance(account: Account, current: number, real: number, date: string): Promise<number> {
   const diff = real - current
   if (!diff) return 0
+  await createRestorePoint(`Antes de corregir el saldo de «${account.name}»`)
   await db.transactions.add(
     newTransaction({ accountId: account.id, date, amount: diff, description: 'Ajuste de saldo', kind: 'transferencia', categoryId: 'cat-transferencia', externalId: `ajuste-${uid()}`, notes: 'Corrección manual para que coincida con el saldo real' }),
   )

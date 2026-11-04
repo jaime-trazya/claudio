@@ -34,7 +34,7 @@ describe('base de datos', () => {
 
     const db = new FinanzasDB(name)
     await db.open()
-    expect(db.verno).toBe(3)
+    expect(db.verno).toBe(4)
     const t = await db.transactions.get('viejo')
     expect(t).toMatchObject({ description: 'Antiguo', tags: [], status: 'confirmado', source: 'manual', updatedAt: 5 })
     expect(await db.accounts.get('a1')).toMatchObject({ initialBalance: 1000 })
@@ -160,5 +160,53 @@ describe('importar las dos cuentas de un PDF', () => {
     // Segunda vez con el mismo archivo: nada nuevo
     expect(await run()).toBe(0)
     expect(await db.transactions.count()).toBe(count)
+  })
+})
+
+import { createRestorePoint, dailyRestorePoint, listRestorePoints, restorePoint, undoLast } from './history'
+import { wipeAll } from './actions'
+
+describe('deshacer', () => {
+  it('deshace la última acción, vuelve a una foto diaria y deshace "eliminar todo"', async () => {
+    const db = new FinanzasDB('test-historial')
+    await db.open()
+    const t = (id: string, amount: number) => ({ id, accountId: 'c1', date: '2026-10-01', amount, description: id, categoryId: null, kind: 'gasto' as const, status: 'confirmado' as const, source: 'manual' as const, tags: [], createdAt: 1, updatedAt: 1 })
+    await db.accounts.add({ id: 'c1', name: 'Banco', type: 'banco', initialBalance: 0, color: '#000', order: 0, createdAt: 1 })
+    await db.transactions.add(t('a', -100))
+    // Foto diaria (una por día, solo si hay cambios)
+    expect(await dailyRestorePoint(db)).toBe(true)
+    expect(await dailyRestorePoint(db)).toBe(false)
+    // Acción: importar dos movimientos
+    await createRestorePoint('Antes de importar «x.csv»', 'accion', db)
+    await db.transactions.bulkAdd([t('b', -200), t('c', -300)])
+    expect(await db.transactions.count()).toBe(3)
+    expect(await undoLast(db)).toBe('Antes de importar «x.csv»')
+    expect((await db.transactions.toArray()).map((x) => x.id)).toEqual(['a'])
+    // Lo deshecho se puede rehacer desde el punto "Antes de volver…"
+    const redo = (await listRestorePoints(db)).find((p) => p.label.startsWith('Antes de deshacer'))!
+    await restorePoint(redo.id, db)
+    expect(await db.transactions.count()).toBe(3)
+    // Volver a como estaba en la foto diaria
+    const daily = (await listRestorePoints(db)).find((p) => p.kind === 'diaria')!
+    await restorePoint(daily.id, db)
+    expect(await db.transactions.count()).toBe(1)
+    // Los puntos no entran en la copia: siguen ahí tras restaurar
+    expect((await listRestorePoints(db)).length).toBeGreaterThan(2)
+    db.close()
+  })
+
+  it('eliminar todo se puede deshacer, salvo si se borra también el historial', async () => {
+    const { db } = await import('./db')
+    await db.open()
+    const before = await db.transactions.count()
+    expect(before).toBeGreaterThan(0)
+    await wipeAll(true)
+    expect(await db.transactions.count()).toBe(0)
+    expect(await db.categories.count()).toBeGreaterThan(30)
+    await undoLast(db)
+    expect(await db.transactions.count()).toBe(before)
+    await wipeAll(false)
+    expect(await db.restorePoints.count()).toBe(0)
+    expect(await undoLast(db)).toBeNull()
   })
 })

@@ -176,3 +176,16 @@ export function monthsBetween(start: ISODate, end: ISODate): number {
   const [y2, m2] = end.split('-').map(Number)
   return (y2 - y1) * 12 + (m2 - m1) + 1
 }
+
+/** "hace 5 min", "ayer", "hace 3 días" */
+export function relativeTime(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000)
+  if (mins < 1) return 'ahora mismo'
+  if (mins < 60) return `hace ${mins} min`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `hace ${hours} h`
+  const d = new Date(ts)
+  const days = daysBetween(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, todayISO())
+  return days === 1 ? 'ayer' : `hace ${days} días`
+}
+

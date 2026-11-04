@@ -17,6 +17,7 @@ import { CategoriesScreen } from './screens/Categories'
 import { RulesScreen } from './screens/Rules'
 import { AccountsScreen, AccountEditor } from './screens/Accounts'
 import { TemplatesScreen } from './screens/Templates'
+import { HistoryScreen } from './screens/History'
 import { ImportStatement } from './screens/ImportStatement'
 import { TxEditor } from './screens/TxEditor'
 import { InstallHint, InstallGuide } from './screens/Install'
@@ -104,6 +105,7 @@ function Shell() {
   else if (path === '/ajustes/cuentas') screen = <AccountsScreen />
   else if (path === '/ajustes/plantillas') screen = <TemplatesScreen />
   else if (path === '/ajustes/instalar') screen = <InstallGuide />
+  else if (path === '/ajustes/historial') screen = <HistoryScreen />
   else if (path === '/importar') screen = <ImportStatement route={route} />
   else {
     screen = null

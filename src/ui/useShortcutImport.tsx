@@ -7,17 +7,19 @@ import { importShortcutPayments } from '../db/actions'
 import { setSetting } from '../db/settings'
 import { db } from '../db/db'
 import { Sheet } from './components'
+import { useUndo } from './useUndo'
 
 /** Botón "Importar pagos del Atajo": lee el archivo y añade los pagos nuevos como pendientes */
 export function useShortcutImport() {
   const { accounts, settings } = useData()
   const toast = useToast()
+  const undo = useUndo()
   const [ask, setAsk] = useState<{ payments: ShortcutPayment[]; fileName: string; cards: string[] } | null>(null)
   const usable = accounts.filter((a) => a.type !== 'inversion' && !a.archived)
 
   async function finish(payments: ShortcutPayment[], fileName: string, fallback: string | null) {
     const res = await importShortcutPayments(payments, usable, fallback, fileName)
-    if (res.added) toast.show(`${res.added} pago${res.added === 1 ? '' : 's'} nuevo${res.added === 1 ? '' : 's'} pendiente${res.added === 1 ? '' : 's'} de confirmar${res.skipped ? ` · ${res.skipped} ya estaban` : ''}`)
+    if (res.added) toast.show(`${res.added} pago${res.added === 1 ? '' : 's'} nuevo${res.added === 1 ? '' : 's'} pendiente${res.added === 1 ? '' : 's'} de confirmar${res.skipped ? ` · ${res.skipped} ya estaban` : ''}`, { action: undo })
     else toast.show(payments.length ? 'No hay pagos nuevos: todos estaban ya importados' : 'El archivo no tiene pagos')
   }
 

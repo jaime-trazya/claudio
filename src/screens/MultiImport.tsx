@@ -7,6 +7,8 @@ import { planImport, summarizePlan } from '../import/reconcile'
 import type { PdfTable } from '../import/pdfTable'
 import { applyStatementImport, mirrorTransfers, SAVINGS_TRANSFER } from '../db/actions'
 import { db } from '../db/db'
+import { createRestorePoint } from '../db/history'
+import { useUndo } from '../ui/useUndo'
 import { bankById, BANKS } from '../domain/banks'
 import { uid } from '../lib/text'
 import type { Account } from '../db/types'
@@ -34,6 +36,7 @@ export function MultiImport({
   const { accounts, transactions } = useData()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const undo = useUndo()
   const usable = accounts.filter((a) => !a.archived && a.type !== 'inversion')
   const primary = usable.find((a) => a.id === primaryAccountId)
   const prefix = bankName ?? primary?.name ?? 'Cuenta'
@@ -60,6 +63,7 @@ export function MultiImport({
   async function run() {
     setBusy(true)
     try {
+      await createRestorePoint(`Antes de importar «${fileName}»`)
       const ids: string[] = []
       let order = accounts.length
       for (const c of choice) {
@@ -78,14 +82,14 @@ export function MultiImport({
         if (!p) continue
         // Recalcula con la cuenta real (las nuevas no tienen duplicados)
         const rows = planImport(p.movements, ids[i], (await db.transactions.toArray()))
-        const res = await applyStatementImport({ rows, accountId: ids[i], fileName: `${fileName} · ${tables[i].label}`, bankBalance: bankClosingBalance(p.movements), fingerprint: i === 0 ? fingerprint : undefined })
+        const res = await applyStatementImport({ rows, accountId: ids[i], fileName: `${fileName} · ${tables[i].label}`, bankBalance: bankClosingBalance(p.movements), fingerprint: i === 0 ? fingerprint : undefined, savePoint: false })
         added += res.added
         dup += summarizePlan(rows).duplicados
       }
       // Los traspasos de la cuenta principal a las de ahorro crean la otra pata en la de ahorro
       let mirrored = 0
       for (let i = 1; i < ids.length; i++) if (isSavings(tables[i].label)) mirrored += await mirrorTransfers(ids[0], ids[i], SAVINGS_TRANSFER)
-      toast.show(`${added} movimientos nuevos${dup ? ` · ${dup} ya estaban` : ''}${mirrored ? ` · ${mirrored} traspasos enlazados` : ''}`)
+      toast.show(`${added} movimientos nuevos${dup ? ` · ${dup} ya estaban` : ''}${mirrored ? ` · ${mirrored} traspasos enlazados` : ''}`, { action: undo })
       onClose()
       onDone(ids[0])
     } finally {

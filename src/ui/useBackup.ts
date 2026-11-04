@@ -1,5 +1,6 @@
 import { createBackup, backupFileName, restoreBackup } from '../db/backup'
 import { setSetting } from '../db/settings'
+import { createRestorePoint } from '../db/history'
 import { ACCEPT_JSON, pickFile, saveFile } from './files'
 import { useToast } from './toast'
 
@@ -35,6 +36,7 @@ export function useBackupRestore() {
     })
     if (!ok) return
     try {
+      await createRestorePoint('Antes de restaurar una copia')
       const res = await restoreBackup(data)
       toast.show(`Copia restaurada · ${res.transactions} movimientos`)
     } catch (e) {

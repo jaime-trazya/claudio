@@ -8,6 +8,7 @@ import { db } from '../db/db'
 import { applyRuleEverywhere, exportRules, importRules, recategorizeUncategorized } from '../db/actions'
 import { ACCEPT_JSON, pickFile, saveFile } from '../ui/files'
 import { todayISO } from '../lib/dates'
+import { useUndo } from '../ui/useUndo'
 import { normalize } from '../lib/text'
 import { ruleMatches } from '../domain/categorize'
 import type { Rule } from '../db/types'
@@ -15,6 +16,7 @@ import type { Rule } from '../db/types'
 export function RulesScreen() {
   const { rules, categoryById, transactions } = useData()
   const toast = useToast()
+  const undo = useUndo()
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<Partial<Rule> | null>(null)
   const list = useMemo(() => {
@@ -72,7 +74,7 @@ export function RulesScreen() {
             if (!file) return
             try {
               const res = await importRules(JSON.parse(await file.text()))
-              toast.show(`${res.added} reglas importadas · ${res.changed} movimientos recategorizados${res.budgets ? ` · ${res.budgets} presupuestos` : ''}${res.skipped ? ` · ${res.skipped} omitidas` : ''}`)
+              toast.show(`${res.added} reglas importadas · ${res.changed} movimientos recategorizados${res.budgets ? ` · ${res.budgets} presupuestos` : ''}${res.skipped ? ` · ${res.skipped} omitidas` : ''}`, { action: undo })
             } catch (e) {
               toast.show((e as Error).message || 'No se ha podido leer el archivo')
             }
