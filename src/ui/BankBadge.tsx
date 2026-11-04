@@ -26,6 +26,12 @@ export function BankBadge({ bank, account, size = 40 }: { bank?: string; account
           <circle cx="27.5" cy="10.5" r="3" fill="#ffc72c" />
           <circle cx="12" cy="11.5" r="2.4" fill="#e2001a" />
         </g>
+      ) : preset.id === 'imagin' ? (
+        // imagin: "i" minúscula con el punto, en blanco sobre su verde
+        <g fill="#ffffff">
+          <circle cx="20" cy="12.5" r="3.2" />
+          <rect x="17.2" y="17.5" width="5.6" height="13" rx="2.8" />
+        </g>
       ) : preset.id === 'revolut' ? (
         <text x="20" y="28" textAnchor="middle" fontFamily="'Manrope Variable', system-ui, sans-serif" fontWeight="800" fontSize="22" fill={preset.fg}>
           R

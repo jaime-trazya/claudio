@@ -124,7 +124,12 @@ export function ImportStatement({ route }: { route: string }) {
     const bank = detectBank(text, header)
     setBankName(bank?.name ?? null)
     if (!bank) return accountId
-    const match = usable.find((a) => a.bank === bank.id) ?? usable.find((a) => a.name.toLowerCase().includes(bank.name.toLowerCase()))
+    // imagin y CaixaBank comparten IBAN: si solo tienes una de las dos, va a esa
+    const sibling = bank.id === 'caixabank' ? 'imagin' : bank.id === 'imagin' ? 'caixabank' : null
+    const match =
+      usable.find((a) => a.bank === bank.id) ??
+      usable.find((a) => a.name.toLowerCase().includes(bank.name.toLowerCase())) ??
+      (sibling ? usable.find((a) => a.bank === sibling) : undefined)
     if (match && match.id !== accountId) {
       setAccountId(match.id)
       toast.show(`Extracto de ${bank.name}: se importará en «${match.name}»`)

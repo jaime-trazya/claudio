@@ -92,6 +92,9 @@ describe('bancos', () => {
     expect(detectBank('ES00 1586 0000 0000 0000 0000')?.id).toBe('traderepublic')
     expect(detectBank('Extracto de Revolut Bank UAB')?.id).toBe('revolut')
     expect(detectBank('Nada que ver')).toBeNull()
+    // imagin comparte código de entidad con CaixaBank: se reconoce por su nombre en la cabecera
+    expect(detectBank('imagin · IBAN ES00 2100 0000 0000 0000 0000', 'imagin extracto de movimientos')?.id).toBe('imagin')
+    expect(detectBank('IBAN ES00 2100 0000 0000 0000 0000', 'CaixaBank movimientos')?.id).toBe('caixabank')
     // El nombre de otro banco en un concepto no cuenta
     expect(detectBank('Movimientos TRANSFERENCIA A TRADE REPUBLIC BANK', 'Movimientos de cuenta')).toBeNull()
   })

@@ -15,7 +15,9 @@ export interface BankPreset {
 }
 
 export const BANKS: BankPreset[] = [
-  { id: 'caixabank', name: 'CaixaBank', bg: '#007eae', fg: '#ffffff', mark: 'CX', entity: ['2100'], detect: /caixabank|la caixa|imagin/i },
+  { id: 'caixabank', name: 'CaixaBank', bg: '#007eae', fg: '#ffffff', mark: 'CX', entity: ['2100'], detect: /caixabank|la caixa/i },
+  // imagin es de CaixaBank y comparte su código de entidad (2100): se distingue por el nombre
+  { id: 'imagin', name: 'imagin', bg: '#00c29a', fg: '#ffffff', mark: 'i', entity: [], detect: /\bimagin(bank)?\b/i },
   { id: 'revolut', name: 'Revolut', bg: '#191c1f', fg: '#ffffff', mark: 'R', entity: ['1583'], detect: /revolut/i },
   { id: 'traderepublic', name: 'Trade Republic', bg: '#000000', fg: '#ffffff', mark: 'TR', entity: ['1586'], detect: /trade republic/i },
   { id: 'bbva', name: 'BBVA', bg: '#072146', fg: '#ffffff', mark: 'BBVA', entity: ['0182'], detect: /\bbbva\b/i },
@@ -31,6 +33,17 @@ export const BANKS: BankPreset[] = [
   { id: 'cajamar', name: 'Cajamar', bg: '#00a05a', fg: '#ffffff', mark: 'CM', entity: ['3058'], detect: /cajamar/i },
   { id: 'n26', name: 'N26', bg: '#36a18b', fg: '#ffffff', mark: 'N26', entity: ['1563'], detect: /\bn26\b/i },
   { id: 'myinvestor', name: 'MyInvestor', bg: '#4a2ad8', fg: '#ffffff', mark: 'MI', entity: ['1544'], detect: /myinvestor/i },
+  { id: 'evo', name: 'EVO Banco', bg: '#f2a900', fg: '#1a1a1a', mark: 'EVO', entity: ['0239'], detect: /evo banco/i },
+  { id: 'laboralkutxa', name: 'Laboral Kutxa', bg: '#003b7a', fg: '#ffffff', mark: 'LK', entity: ['3035'], detect: /laboral kutxa/i },
+  { id: 'cajarural', name: 'Caja Rural', bg: '#00843d', fg: '#ffffff', mark: 'CR', entity: [], detect: /caja rural|ruralvia/i },
+  { id: 'deutsche', name: 'Deutsche Bank', bg: '#0018a8', fg: '#ffffff', mark: 'DB', entity: ['0019'], detect: /deutsche bank/i },
+  { id: 'selfbank', name: 'Self Bank', bg: '#e4002b', fg: '#ffffff', mark: 'SB', entity: ['1490'], detect: /self ?bank/i },
+  { id: 'pibank', name: 'Pibank', bg: '#ffd400', fg: '#1a1a1a', mark: 'Pi', entity: ['0234'], detect: /pibank/i },
+  { id: 'wizink', name: 'WiZink', bg: '#d1006e', fg: '#ffffff', mark: 'WZ', entity: ['0229'], detect: /wizink/i },
+  { id: 'mediolanum', name: 'Mediolanum', bg: '#0b2d71', fg: '#ffffff', mark: 'M', entity: ['0186'], detect: /mediolanum/i },
+  { id: 'bancamarch', name: 'Banca March', bg: '#b4975a', fg: '#ffffff', mark: 'BM', entity: ['0061'], detect: /banca march/i },
+  { id: 'triodos', name: 'Triodos', bg: '#00594f', fg: '#ffffff', mark: 'T', entity: ['1491'], detect: /triodos/i },
+  { id: 'bunq', name: 'bunq', bg: '#2a2a2a', fg: '#ffffff', mark: 'b', entity: [], detect: /\bbunq\b/i },
   { id: 'wise', name: 'Wise', bg: '#9fe870', fg: '#163300', mark: 'W', entity: [], detect: /\bwise\b/i },
   { id: 'efectivo', name: 'Efectivo', bg: '#2f7a45', fg: '#ffffff', mark: '€', entity: [], detect: /^$/ },
 ]
@@ -43,6 +56,9 @@ export const bankById = (id?: string) => BANKS.find((b) => b.id === id)
  * ("Transferencia a Trade Republic" en un extracto de CaixaBank no es de Trade Republic).
  */
 export function detectBank(text: string, header: string = text): BankPreset | null {
+  // Bancos que comparten código de entidad con otro: manda el nombre (imagin dentro de CaixaBank)
+  const shared = BANKS.find((b) => b.id === 'imagin' && b.detect.test(header))
+  if (shared) return shared
   const iban = text.replace(/\s+/g, '').match(/ES\d{2}(\d{4})\d{16}/)
   if (iban) {
     const byEntity = BANKS.find((b) => b.entity.includes(iban[1]))
