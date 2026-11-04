@@ -3,7 +3,7 @@ import { type DateRange, type ISODate, accountingMonth, addDays, inRange, monthR
 import { merchantKey, prettyMerchant } from '../lib/text'
 
 /** Solo los gastos e ingresos cuentan en las estadísticas (no transferencias ni aportaciones) */
-export const isCountable = (tx: Transaction) => tx.kind === 'gasto' || tx.kind === 'ingreso'
+export const isCountable = (tx: Transaction) => (tx.kind === 'gasto' || tx.kind === 'ingreso') && !tx.excluded
 
 /** Reparto por categorías (si el movimiento está dividido) */
 export function parts(tx: Transaction): { categoryId: string | null; amount: number }[] {

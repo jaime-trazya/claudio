@@ -46,6 +46,8 @@ export interface Transaction {
   status: TxStatus
   source: TxSource
   notes?: string
+  /** Mueve el saldo pero no cuenta en gastos/ingresos, presupuestos ni estadísticas */
+  excluded?: boolean
   tags: string[]
   splits?: Split[]
   /** Enlaza las dos patas de una transferencia */

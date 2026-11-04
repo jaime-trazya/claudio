@@ -184,3 +184,21 @@ describe('cuentas agrupadas por banco', () => {
     expect(lastStatementDate(a[1], txs)).toBeNull()
   })
 })
+
+import { budgetStatus } from './budgets'
+import { detectRecurring } from './recurring'
+
+describe('gastos que no cuentan', () => {
+  it('cambian el saldo pero no cuentan en gastos, presupuestos ni recurrentes', () => {
+    const txs = [
+      tx({ accountId: 'a', date: '2026-10-02', amount: -2000, categoryId: 'cat-supermercado' }),
+      tx({ accountId: 'a', date: '2026-10-03', amount: -50000, categoryId: 'cat-supermercado', excluded: true }),
+    ]
+    expect(summarize(txs, oct, byId).expenses).toBe(2000)
+    expect(expensesByCategory(txs, oct, cats)[0].amount).toBe(2000)
+    expect(budgetStatus({ id: 'b', categoryId: 'cat-alimentacion', amount: 10000 }, txs, oct, cats).spent).toBe(2000)
+    expect(accountBalance(account({ id: 'a' }), txs)).toBe(-52000)
+    const monthly = ['2026-08-10', '2026-09-10', '2026-10-10'].map((d) => tx({ date: d, amount: -999, description: 'CUOTA X', excluded: true }))
+    expect(detectRecurring(monthly, '2026-10-20')).toEqual([])
+  })
+})

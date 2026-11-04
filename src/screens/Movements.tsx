@@ -58,7 +58,7 @@ export function Movements({ route }: { route: string }) {
     return transactions.filter((t) => {
       if (fCuenta && t.accountId !== fCuenta) return false
       if (fTipo && t.kind !== fTipo) return false
-      if (fEstado && t.status !== fEstado) return false
+      if (fEstado === 'excluido' ? !t.excluded : fEstado && t.status !== fEstado) return false
       if (fMes && accountingMonth(t.date, startDay).key !== fMes) return false
       if (catIds) {
         const ids = t.splits?.length ? t.splits.map((s) => s.categoryId ?? 'none') : [t.categoryId ?? 'none']
@@ -108,6 +108,7 @@ export function Movements({ route }: { route: string }) {
       items: [
         { value: 'confirmado', label: 'Confirmados' },
         { value: 'pendiente', label: 'Pendientes de confirmar' },
+        { value: 'excluido', label: 'Que no cuentan en gastos' },
       ],
     },
   }

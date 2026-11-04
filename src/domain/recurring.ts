@@ -29,7 +29,7 @@ const median = (xs: number[]) => {
  * Solo se muestran los activos (último cargo hace menos de 40 días respecto a `ref`).
  */
 export function detectRecurring(txs: Transaction[], ref?: ISODate): Recurring[] {
-  const expenses = txs.filter((t) => t.amount < 0 && t.kind === 'gasto')
+  const expenses = txs.filter((t) => t.amount < 0 && t.kind === 'gasto' && !t.excluded)
   if (!expenses.length) return []
   const refDate = ref ?? expenses.reduce((m, t) => (t.date > m ? t.date : m), expenses[0].date)
   const groups = new Map<string, Transaction[]>()

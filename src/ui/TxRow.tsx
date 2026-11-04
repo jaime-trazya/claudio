@@ -13,6 +13,7 @@ export function TxRow({ tx, showAccount = true }: { tx: Transaction; showAccount
   const isTransfer = tx.kind === 'transferencia' || (tx.kind === 'aportacion' && tx.transferId)
   const second = [
     tx.splits?.length ? `Dividido en ${tx.splits.length}` : isTransfer ? 'Transferencia' : tx.kind === 'aportacion' ? 'Aportación' : categoryLabel(cat, categoryById),
+    tx.excluded ? 'No cuenta' : null,
     showAccount && account ? account.name : null,
   ]
     .filter(Boolean)

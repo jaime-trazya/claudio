@@ -170,6 +170,7 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 - **Importar / exportar reglas** (Ajustes → Reglas): guarda tus reglas en un archivo o carga un archivo de reglas (por ejemplo, el que te preparen con los bares y tiendas de tu zona). Al importarlas se recategorizan los movimientos que ya tenías.
 - **Aplicar siempre**: al cambiar la categoría de un movimiento, la app te pregunta si quieres aplicarla siempre a ese concepto. Si dices que sí, crea la regla y recategoriza los movimientos anteriores iguales.
 - **Dividir**: en un movimiento, pulsa **Dividir en varias categorías** (por ejemplo, una compra con parte de supermercado y parte de hogar).
+- **No contar en gastos**: en cualquier gasto o ingreso puedes activar este interruptor. El dinero sale (o entra) de la cuenta y el saldo cambia, pero no cuenta en gastos, ingresos, presupuestos, estadísticas ni recurrentes. Útil para un regalo puntual, algo que te van a devolver o un gasto que no quieres que te descuadre el mes. En Movimientos lo verás con «No cuenta», y puedes filtrarlos en **Estado → Que no cuentan en gastos**.
 - **Notas y etiquetas**: en cada movimiento. El buscador de Movimientos también busca en ellas.
 - **Presupuestos** (Análisis → Presupuestos): pon un límite mensual por categoría. Verás una barra de progreso y un aviso en Inicio al pasar del **80 %** y del **100 %**.
 - **Recurrentes** (Análisis → Recurrentes): la app detecta sola los pagos que se repiten cada mes (suscripciones, recibos) y muestra el coste mensual y anual.

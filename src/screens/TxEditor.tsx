@@ -31,6 +31,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
   const [toAccountId, setToAccountId] = useState(usable.find((a) => a.id !== accountId)?.id ?? '')
   const [categoryId, setCategoryId] = useState<string | null>(base?.categoryId ?? null)
   const [pending, setPending] = useState(base?.status === 'pendiente')
+  const [excluded, setExcluded] = useState(!!base?.excluded)
   const [notes, setNotes] = useState(base?.notes ?? '')
   const [tags, setTags] = useState((base?.tags ?? []).join(', '))
   const [splits, setSplits] = useState<{ categoryId: string | null; text: string }[]>(
@@ -89,6 +90,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       categoryId: splitList ? null : mode === 'aportacion' && !categoryId ? 'cat-inversion' : mode === 'transferencia' ? 'cat-transferencia' : categoryId,
       kind: isPairedTransfer ? tx!.kind : kind,
       status: pending ? 'pendiente' : 'confirmado',
+      excluded: (mode === 'gasto' || mode === 'ingreso') && excluded ? true : undefined,
       notes: notes.trim() || undefined,
       tags: tagList,
       splits: splitList,
@@ -119,7 +121,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
         const n = await applyRuleEverywhere(keyword, finalCategory, mode === 'aportacion' || mode === 'transferencia' ? mode : undefined)
         toast.show(n ? `Regla creada · ${n} movimiento${n === 1 ? '' : 's'} más actualizado${n === 1 ? '' : 's'}` : 'Regla creada')
       }
-    } else toast.show(isNew ? 'Movimiento añadido' : 'Cambios guardados')
+    } else toast.show(isNew ? (next.excluded ? 'Movimiento añadido (no cuenta en gastos)' : 'Movimiento añadido') : 'Cambios guardados')
   }
 
   async function remove() {
@@ -282,6 +284,16 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
           >
             <Plus size={16} /> {splits.length ? 'Añadir parte' : 'Dividir en varias categorías'}
           </button>
+        </div>
+      )}
+
+      {(mode === 'gasto' || mode === 'ingreso') && !isPairedTransfer && (
+        <div className="card row between" style={{ padding: '10px 14px' }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>No contar en {mode === 'ingreso' ? 'ingresos' : 'gastos'}</div>
+            <div className="meta">El saldo de la cuenta cambia igual, pero no sale en estadísticas, presupuestos ni recurrentes</div>
+          </div>
+          <Switch checked={excluded} onChange={setExcluded} label={`No contar en ${mode === 'ingreso' ? 'ingresos' : 'gastos'}`} />
         </div>
       )}
 

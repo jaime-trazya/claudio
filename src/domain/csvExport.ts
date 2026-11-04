@@ -30,7 +30,7 @@ export function transactionsToCSV(txs: Transaction[], accounts: Account[], categ
           t.description,
           num(r.amount),
           catName(r.categoryId),
-          KIND[t.kind],
+          KIND[t.kind] + (t.excluded ? ' (no cuenta)' : ''),
           t.status === 'pendiente' ? 'Pendiente' : 'Confirmado',
           t.notes ?? '',
           t.tags.join(', '),
