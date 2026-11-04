@@ -39,7 +39,9 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
   const [picker, setPicker] = useState<null | { index: number | 'main' }>(null)
 
   const absAmount = Math.abs(parseAmount(amountText) ?? 0)
-  const signed = mode === 'ingreso' ? absAmount : -absAmount
+  // Traspasos y aportaciones ya existentes conservan su sentido (entrada o salida de dinero)
+  const keepSign = !!tx && (mode === 'transferencia' || mode === 'aportacion') && tx.amount > 0
+  const signed = mode === 'ingreso' || keepSign ? absAmount : -absAmount
   const splitTotal = splits.reduce((s, x) => s + Math.abs(parseAmount(x.text) ?? 0), 0)
   const splitRemaining = absAmount - splitTotal
   const category = categoryId ? categoryById.get(categoryId) : undefined
@@ -50,15 +52,15 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       { value: 'gasto', label: 'Gasto' },
       { value: 'ingreso', label: 'Ingreso' },
       { value: 'aportacion', label: 'Inversión' },
+      { value: 'transferencia', label: 'Traspaso' },
     ]
-    if (isNew) m.push({ value: 'transferencia', label: 'Traspaso' })
     return m
-  }, [isNew])
+  }, [])
 
   const canSave =
     absAmount > 0 &&
     !!accountId &&
-    (mode === 'transferencia' ? !!toAccountId && toAccountId !== accountId : description.trim().length > 0) &&
+    (mode === 'transferencia' && isNew ? !!toAccountId && toAccountId !== accountId : description.trim().length > 0) &&
     (splits.length === 0 || splitRemaining === 0)
 
   async function save() {
@@ -84,7 +86,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       date,
       amount: isPairedTransfer ? (tx!.amount < 0 ? -absAmount : absAmount) : signed,
       description: description.trim(),
-      categoryId: splitList ? null : mode === 'aportacion' && !categoryId ? 'cat-inversion' : categoryId,
+      categoryId: splitList ? null : mode === 'aportacion' && !categoryId ? 'cat-inversion' : mode === 'transferencia' ? 'cat-transferencia' : categoryId,
       kind: isPairedTransfer ? tx!.kind : kind,
       status: pending ? 'pendiente' : 'confirmado',
       notes: notes.trim() || undefined,
@@ -101,18 +103,20 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
         .modify({ amount: -next.amount, date, description: next.description, updatedAt: Date.now() })
     }
     onClose()
-    const changedCategory = tx && !splitList && categoryId && categoryId !== tx.categoryId && !isPairedTransfer
+    const finalCategory = next.categoryId
+    const changedCategory = tx && !splitList && finalCategory && (finalCategory !== tx.categoryId || next.kind !== tx.kind) && !isPairedTransfer
     if (changedCategory) {
       const keyword = merchantKey(tx.bankDescription ?? tx.description)
-      const cat = categoryById.get(categoryId)
+      const cat = categoryById.get(finalCategory)
+      const what = mode === 'transferencia' ? 'serán traspasos entre tus cuentas (no cuentan como gasto ni ingreso)' : mode === 'aportacion' ? 'serán aportaciones a inversión' : `pasarán a ${categoryLabel(cat, categoryById)}`
       const ok = await toast.confirm({
         title: `¿Aplicar siempre a «${keyword}»?`,
-        message: `Los movimientos con este concepto pasarán a ${categoryLabel(cat, categoryById)}, también los anteriores, y los nuevos se categorizarán solos.`,
+        message: `Los movimientos con este concepto ${what}, también los anteriores, y los nuevos se clasificarán solos.`,
         confirmLabel: 'Aplicar siempre',
         cancelLabel: 'Solo este',
       })
       if (ok) {
-        const n = await applyRuleEverywhere(keyword, categoryId, mode === 'aportacion' ? 'aportacion' : undefined)
+        const n = await applyRuleEverywhere(keyword, finalCategory, mode === 'aportacion' || mode === 'transferencia' ? mode : undefined)
         toast.show(n ? `Regla creada · ${n} movimiento${n === 1 ? '' : 's'} más actualizado${n === 1 ? '' : 's'}` : 'Regla creada')
       }
     } else toast.show(isNew ? 'Movimiento añadido' : 'Cambios guardados')
@@ -173,7 +177,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
           enterKeyHint="done"
         />
         <div className="meta" style={{ textAlign: 'center' }}>
-          {mode === 'ingreso' ? 'Entra dinero' : mode === 'transferencia' ? 'Se mueve entre tus cuentas: no cuenta como gasto' : mode === 'aportacion' ? 'Aportación a inversión: no cuenta como gasto' : 'Sale dinero'}
+          {mode === 'ingreso' ? 'Entra dinero' : mode === 'transferencia' ? 'Entre tus cuentas: no cuenta como gasto ni ingreso' : mode === 'aportacion' ? 'Aportación a inversión: no cuenta como gasto' : 'Sale dinero'}
         </div>
       </div>
 
@@ -189,7 +193,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
           <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
         <label className="field">
-          <span>{mode === 'transferencia' ? 'Desde' : 'Cuenta'}</span>
+          <span>{mode === 'transferencia' && isNew ? 'Desde' : 'Cuenta'}</span>
           <select className="select" value={accountId} onChange={(e) => setAccountId(e.target.value)} disabled={isPairedTransfer}>
             {usable.map((a) => (
               <option key={a.id} value={a.id}>
@@ -200,7 +204,9 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
         </label>
       </div>
 
-      {mode === 'transferencia' ? (
+      {mode === 'transferencia' && !isNew ? (
+        <p className="meta">Movimiento entre tus propias cuentas: no cuenta como gasto ni como ingreso.</p>
+      ) : mode === 'transferencia' ? (
         <label className="field">
           <span>Hacia</span>
           <select className="select" value={toAccountId} onChange={(e) => setToAccountId(e.target.value)}>
@@ -231,7 +237,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       )}
 
       {mode !== 'transferencia' && !isPairedTransfer && (
-        <div className="stack" style={{ gap: 8 }}>
+        <div className="stack" style={{ gap: 8 }} data-split>
           {splits.length > 0 && (
             <>
               <span className="field-label">Dividido en categorías</span>

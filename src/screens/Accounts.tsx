@@ -69,6 +69,7 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
   const [color, setColor] = useState(existing?.color ?? CATEGORY_COLORS[accounts.length % CATEGORY_COLORS.length])
   const [cardAlias, setCardAlias] = useState(existing?.cardAlias ?? '')
   const [archived, setArchived] = useState(!!existing?.archived)
+  const [cashAccountId, setCashAccountId] = useState(existing?.cashAccountId ?? '')
   const initialCents = initial.trim() ? parseAmount(initial) : 0
   const valid = name.trim().length > 0 && initialCents !== null
   const count = existing ? transactions.filter((t) => t.accountId === existing.id).length : 0
@@ -83,6 +84,7 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
       color,
       cardAlias: cardAlias.trim() || undefined,
       archived,
+      cashAccountId: type === 'inversion' && cashAccountId ? cashAccountId : undefined,
       order: existing?.order ?? accounts.length,
       createdAt: existing?.createdAt ?? Date.now(),
     }
@@ -148,6 +150,24 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
           <span>Nombre de la tarjeta en Wallet (para el Atajo de Apple Pay)</span>
           <input className="input" value={cardAlias} onChange={(e) => setCardAlias(e.target.value)} placeholder="Visa Débito" />
           <span className="meta">Los pagos del Atajo con esta tarjeta se asignarán a esta cuenta.</span>
+        </label>
+      )}
+      {type === 'inversion' && (
+        <label className="field">
+          <span>El efectivo de este bróker está en…</span>
+          <select className="select" value={cashAccountId} onChange={(e) => setCashAccountId(e.target.value)}>
+            <option value="">No lo importo aparte (contar el efectivo aquí)</option>
+            {accounts
+              .filter((a) => a.type !== 'inversion' && a.id !== existing?.id)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+          </select>
+          <span className="meta">
+            Si importas el extracto de la cuenta corriente de Trade Republic en otra cuenta, elígela: el efectivo no se contará dos veces y lo aportado serán las compras y ventas («Buy trade», «Sell trade»).
+          </span>
         </label>
       )}
       <div className="field">

@@ -111,7 +111,9 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['netflix', 'spotify', 'hbo', 'max.com', 'disney', 'prime video', 'amazon prime', 'apple.com/bill', 'icloud', 'youtube premium', 'dazn', 'movistar plus', 'filmin', 'audible', 'chatgpt', 'openai', 'adobe', 'microsoft 365', 'google one', 'playstation', 'xbox', 'nintendo'], 'cat-suscripciones'],
   [['nomina', 'nómina', 'salario', 'haberes'], 'cat-sueldo', 'ingreso'],
   [['bizum'], 'cat-bizum'],
-  [['trade republic', 'traderepublic'], 'cat-inversion', 'aportacion'],
+  [['trade republic', 'traderepublic', 'buy trade', 'sell trade', 'savings plan', 'saveback', 'plan de inversion'], 'cat-inversion', 'aportacion'],
+  // Traspasos entre tus propias cuentas: no cuentan como gasto ni ingreso
+  [['cuenta remunerada', 'apple pay top up', 'top up', 'recarga de apple pay', 'una recarga de apple pay', 'revolut', 'traspaso propio', 'traspaso entre cuentas'], 'cat-transferencia', 'transferencia'],
   [['iberdrola', 'endesa', 'naturgy', 'holaluz', 'repsol luz', 'octopus energy', 'totalenergies', 'som energia', 'curenergia'], 'cat-luz'],
   [['canal de isabel', 'aigues', 'aguas de', 'emasesa', 'aqualia', 'emaya'], 'cat-agua'],
   [['movistar', 'vodafone', 'orange', 'yoigo', 'digi', 'pepephone', 'masmovil', 'lowi', 'simyo', 'o2 ', 'jazztel', 'finetwork'], 'cat-internet'],
@@ -139,7 +141,7 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['agencia tributaria', 'aeat', 'hacienda', 'ayuntamiento', 'ibi ', 'dgt', 'tasa ', 'impuesto'], 'cat-impuestos'],
   [['cajero', 'reintegro', 'retirada efectivo', 'disposicion efectivo'], 'cat-efectivo'],
   [['devolucion', 'reembolso', 'abono compra'], 'cat-reembolsos', 'ingreso'],
-  [['intereses', 'dividendo', 'remuneracion cuenta'], 'cat-intereses', 'ingreso'],
+  [['intereses', 'interes neto', 'interes bruto', 'dividendo', 'dividend', 'remuneracion cuenta'], 'cat-intereses', 'ingreso'],
   [['academia', 'universidad', 'colegio', 'matricula', 'udemy', 'coursera', 'libreria', 'casa del libro'], 'cat-educacion'],
 ]
 

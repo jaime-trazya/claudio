@@ -25,6 +25,12 @@ export function totalContributed(account: Account, txs: Transaction[], until?: I
   for (const tx of txs) {
     if (tx.kind !== 'aportacion') continue
     if (until && tx.date > until) continue
+    if (account.cashAccountId) {
+      // El efectivo del bróker se lleva en su propia cuenta: solo cuentan las compras y ventas
+      // hechas desde ella ("Buy trade" −50 € = +50 € invertidos; las ventas restan)
+      if (tx.accountId === account.cashAccountId) total += -tx.amount
+      continue
+    }
     if (tx.accountId === account.id) {
       // Pata de entrada en la cuenta de inversión
       total += tx.amount
@@ -34,6 +40,11 @@ export function totalContributed(account: Account, txs: Transaction[], until?: I
     }
   }
   return total
+}
+
+/** Valor de una foto; sin el efectivo si ese efectivo ya está en otra cuenta de la app */
+export function snapshotValue(account: Account, snap: Snapshot): number {
+  return account.cashAccountId ? snap.total - snap.cash : snap.total
 }
 
 export function latestSnapshot(snapshots: Snapshot[], accountId: string, until?: ISODate): Snapshot | undefined {
@@ -62,14 +73,14 @@ const KIND_LABEL: Record<PositionKind | 'efectivo', string> = {
 export function portfolioSummary(account: Account, snapshots: Snapshot[], txs: Transaction[], investmentAccounts: Account[] = [account]): PortfolioSummary {
   const snap = latestSnapshot(snapshots, account.id)
   const contributed = totalContributed(account, txs, undefined, investmentAccounts)
-  const value = snap ? snap.total : contributed
+  const value = snap ? snapshotValue(account, snap) : contributed
   const gain = value - contributed
   const allocation: PortfolioSummary['allocation'] = []
   if (snap) {
     const buckets = new Map<PositionKind | 'efectivo', number>()
     for (const p of snap.positions) buckets.set(p.kind, (buckets.get(p.kind) ?? 0) + p.value)
-    if (snap.cash) buckets.set('efectivo', snap.cash)
-    for (const [kind, v] of buckets) allocation.push({ kind, label: KIND_LABEL[kind], value: v, ratio: snap.total ? v / snap.total : 0 })
+    if (snap.cash && !account.cashAccountId) buckets.set('efectivo', snap.cash)
+    for (const [kind, v] of buckets) allocation.push({ kind, label: KIND_LABEL[kind], value: v, ratio: value ? v / value : 0 })
     allocation.sort((a, b) => b.value - a.value)
   }
   return { value, contributed, gain, gainRatio: contributed > 0 ? gain / contributed : null, date: snap?.date ?? null, allocation }
@@ -80,13 +91,13 @@ export function portfolioEvolution(account: Account, snapshots: Snapshot[], txs:
   return snapshots
     .filter((s) => s.accountId === account.id)
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map((s) => ({ date: s.date, value: s.total, contributed: totalContributed(account, txs, s.date, investmentAccounts) }))
+    .map((s) => ({ date: s.date, value: snapshotValue(account, s), contributed: totalContributed(account, txs, s.date, investmentAccounts) }))
 }
 
 /** Valor de una cuenta de inversión en una fecha: última foto o, si no hay, lo aportado */
 export function investmentValue(account: Account, snapshots: Snapshot[], txs: Transaction[], until?: ISODate, investmentAccounts: Account[] = [account]): number {
   const snap = latestSnapshot(snapshots, account.id, until)
-  return snap ? snap.total : totalContributed(account, txs, until, investmentAccounts)
+  return snap ? snapshotValue(account, snap) : totalContributed(account, txs, until, investmentAccounts)
 }
 
 export interface NetWorth {

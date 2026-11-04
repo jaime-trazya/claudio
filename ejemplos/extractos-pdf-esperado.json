@@ -1,0 +1,18 @@
+{
+  "unaLinea": {
+    "movements": 26,
+    "sum": 1251.86,
+    "start": 250,
+    "end": 1501.86
+  },
+  "variasLineas": {
+    "movements": 9,
+    "sum": 31.08,
+    "end": 31.08
+  },
+  "variasTablas": {
+    "movements": 9,
+    "sum": 54.07,
+    "savingsRows": 3
+  }
+}

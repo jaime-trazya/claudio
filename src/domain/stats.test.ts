@@ -120,6 +120,25 @@ describe('inversiones y patrimonio', () => {
     expect(p.allocation.reduce((s, a) => s + a.ratio, 0)).toBeCloseTo(1)
   })
 
+  it('con la cuenta de efectivo del bróker: no cuenta el efectivo dos veces y aporta solo lo comprado', () => {
+    const trCash = account({ id: 'trc', name: 'TR cuenta corriente' })
+    const trInv = account({ id: 'tr', type: 'inversion', initialBalance: 0, cashAccountId: 'trc' })
+    const moves = [
+      tx({ accountId: 'a1', date: '2026-10-01', amount: -10000, description: 'TRANSFERENCIA A TRADE REPUBLIC', kind: 'aportacion' }),
+      tx({ accountId: 'trc', date: '2026-10-01', amount: 10000, description: 'Top up', kind: 'transferencia' }),
+      tx({ accountId: 'trc', date: '2026-10-02', amount: -6000, description: 'Buy trade IE00B4L5Y983', kind: 'aportacion' }),
+      tx({ accountId: 'trc', date: '2026-10-20', amount: 1000, description: 'Sell trade IE00B4L5Y983', kind: 'aportacion' }),
+    ]
+    const snap: Snapshot = { id: 's', accountId: 'tr', date: '2026-10-31', positions: [{ name: 'ETF', kind: 'etf', units: 1, price: 1, value: 5500 }], cash: 5000, total: 10500, source: 'pdf', fingerprint: 'x', createdAt: 1 }
+    expect(totalContributed(trInv, moves)).toBe(5000)
+    const p = portfolioSummary(trInv, [snap], moves)
+    expect(p).toMatchObject({ value: 5500, contributed: 5000, gain: 500 })
+    expect(p.allocation.map((a) => a.kind)).toEqual(['etf'])
+    const nw = netWorth([bank, trCash, trInv], moves, [snap])
+    // banco 1000 − 100 + efectivo TR (100 − 60 + 10 = 50) + posiciones 55
+    expect(nw).toEqual({ cash: 100000 - 10000 + 5000, investments: 5500, total: 100000 - 10000 + 5000 + 5500 })
+  })
+
   it('sin fotos, el valor es lo aportado y no hay reparto', () => {
     const p = portfolioSummary(tr, [], [])
     expect(p).toMatchObject({ value: 450000, contributed: 450000, gain: 0, gainRatio: 0, allocation: [] })

@@ -7,7 +7,7 @@ PWA de finanzas personales para iPhone, **sin backend**: todo se ejecuta en el n
 ## Funciones
 
 - Cuentas (banco, tarjeta, efectivo, inversión), saldo calculado y transferencias que no cuentan como gasto.
-- Importación de extractos CSV/XLS/XLSX con detección de columnas (formatos españoles), plantillas por banco, vista previa, duplicados y conciliación con pagos pendientes.
+- Importación de extractos PDF, CSV, XLS y XLSX con detección de columnas (formatos españoles, tablas PDF de una o varias líneas por movimiento, varias tablas por PDF), plantillas por banco, vista previa, duplicados y conciliación con pagos pendientes. Traspasos entre cuentas propias detectados.
 - Pagos de Apple Pay mediante un Atajo de iOS que escribe en iCloud Drive.
 - Categorías, reglas automáticas, «aplicar siempre», división de movimientos, notas y etiquetas.
 - Presupuestos con avisos al 80 % y 100 %, recurrentes y suscripciones.

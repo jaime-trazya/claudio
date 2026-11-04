@@ -8,6 +8,7 @@ import { navigate, routeParams } from '../ui/router'
 import { categoryLabel } from '../ui/format'
 import { ACCEPT_STATEMENT, pickFile } from '../ui/files'
 import type { Row } from '../import/readSheet'
+import type { PdfTable } from '../import/pdfTable'
 import { applyMapping, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
 import { categorize, sortRules } from '../domain/categorize'
@@ -41,7 +42,10 @@ export function ImportStatement({ route }: { route: string }) {
   const [overrides, setOverrides] = useState<Record<number, string | null>>({})
   const [picking, setPicking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [tables, setTables] = useState<PdfTable[] | null>(null)
   const sorted = useMemo(() => sortRules(rules), [rules])
+  const [limit, setLimit] = useState(200)
+  const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
   const txById = useMemo(() => new Map(transactions.map((t) => [t.id, t])), [transactions])
 
   function buildPlan(m: ColumnMapping, data: Row[] = rows, acc = accountId) {
@@ -56,44 +60,72 @@ export function ImportStatement({ route }: { route: string }) {
     const file = await pickFile(ACCEPT_STATEMENT)
     if (!file) return
     setBusy(true)
+    setFileName(file.name)
     try {
-      // SheetJS se carga solo al importar, para que la app arranque más rápido
-      const { readSheet } = await import('../import/readSheet')
-      const data = readSheet(await file.arrayBuffer(), file.name)
-      setRows(data)
-      setFileName(file.name)
-      if (!data.length) {
-        toast.show('El archivo está vacío o no se puede leer')
-        return
-      }
-      // 1) Plantilla guardada para este banco
-      const tpl = templates.find((t) => t.mapping.headerRow < data.length && headerSignature(data, t.mapping.headerRow) === t.signature)
-      if (tpl) {
-        setMapping(tpl.mapping)
-        setTemplateName(tpl.name)
-        const p = buildPlan(tpl.mapping, data)
-        if (p.length) {
-          setStep('vista')
+      const buf = await file.arrayBuffer()
+      const isPdf = file.name.toLowerCase().endsWith('.pdf') || new Uint8Array(buf.slice(0, 4)).every((b, i) => b === [0x25, 0x50, 0x44, 0x46][i])
+      if (isPdf) {
+        const { readPdfLinesInBrowser } = await import('../import/pdfText')
+        const { pdfToTables } = await import('../import/pdfTable')
+        const lines = await readPdfLinesInBrowser(buf)
+        if (lines.some((l) => /extracto del patrimonio neto/i.test(l.text))) {
+          const inv = accounts.find((a) => a.type === 'inversion')
+          toast.show('Este PDF es el extracto del patrimonio de Trade Republic: impórtalo desde Patrimonio')
+          if (inv) navigate(`/patrimonio/${inv.id}?importar=1`, true)
           return
         }
+        const found = pdfToTables(lines)
+        if (!found.length) {
+          toast.show(lines.length ? 'No se ha encontrado ninguna tabla de movimientos en el PDF. Prueba a descargar el extracto en Excel o CSV.' : 'El PDF no tiene texto (¿es una foto escaneada?). Descárgalo en Excel o CSV.')
+          return
+        }
+        if (found.length > 1) {
+          setTables(found.sort((a, b) => b.movements - a.movements))
+          return
+        }
+        loadRows(found[0].rows)
+        return
       }
-      // 2) Detección automática
-      const det = detectColumns(data)
-      if (det && det.confidence >= 0.6 && det.validRows > 0) {
-        setMapping(det.mapping)
-        buildPlan(det.mapping, data)
-        setStep('vista')
-      } else {
-        setMapping(
-          det?.mapping ?? { headerRow: -1, dateCol: 0, descCol: Math.min(1, (data[0]?.length ?? 1) - 1), amountCol: Math.min(2, (data[0]?.length ?? 1) - 1), debitCol: null, creditCol: null },
-        )
-        setStep('columnas')
-        toast.show('No hemos reconocido las columnas: indícalas tú')
-      }
+      // SheetJS se carga solo al importar, para que la app arranque más rápido
+      const { readSheet } = await import('../import/readSheet')
+      loadRows(readSheet(buf, file.name))
     } catch {
       toast.show('No se ha podido leer el archivo')
     } finally {
       setBusy(false)
+    }
+  }
+
+  function loadRows(data: Row[]) {
+    setTables(null)
+    setRows(data)
+    if (!data.length) {
+      toast.show('El archivo está vacío o no se puede leer')
+      return
+    }
+    // 1) Plantilla guardada para este banco
+    const tpl = templates.find((t) => t.mapping.headerRow < data.length && headerSignature(data, t.mapping.headerRow) === t.signature)
+    if (tpl) {
+      setMapping(tpl.mapping)
+      setTemplateName(tpl.name)
+      const p = buildPlan(tpl.mapping, data)
+      if (p.length) {
+        setStep('vista')
+        return
+      }
+    }
+    // 2) Detección automática
+    const det = detectColumns(data)
+    if (det && det.confidence >= 0.6 && det.validRows > 0) {
+      setMapping(det.mapping)
+      buildPlan(det.mapping, data)
+      setStep('vista')
+    } else {
+      setMapping(
+        det?.mapping ?? { headerRow: -1, dateCol: 0, descCol: Math.min(1, (data[0]?.length ?? 1) - 1), amountCol: Math.min(2, (data[0]?.length ?? 1) - 1), debitCol: null, creditCol: null },
+      )
+      setStep('columnas')
+      toast.show('No hemos reconocido las columnas: indícalas tú')
     }
   }
 
@@ -149,12 +181,29 @@ export function ImportStatement({ route }: { route: string }) {
             </select>
           </label>
           <button className="btn primary block" onClick={() => void chooseFile()} disabled={busy}>
-            <FileUp size={18} /> {busy ? 'Leyendo…' : 'Elegir archivo (CSV, XLS o XLSX)'}
+            <FileUp size={18} /> {busy ? 'Leyendo…' : 'Elegir archivo (PDF, CSV, XLS o XLSX)'}
           </button>
+          {tables && (
+            <div className="stack" style={{ gap: 8 }}>
+              <span className="field-label">Este PDF tiene varias tablas. ¿Cuál quieres importar en «{usable.find((a) => a.id === accountId)?.name}»?</span>
+              <div className="card flush list">
+                {tables.map((t, i) => (
+                  <button key={i} className="list-item" onClick={() => loadRows(t.rows)}>
+                    <div className="grow">
+                      <div className="primary-line">{t.label}</div>
+                      <div className="secondary-line ellipsis">
+                        {t.movements} filas · {t.rows[0].filter(Boolean).slice(0, 4).join(' · ')}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="card stack" style={{ gap: 8 }}>
             <strong>Qué hace la importación</strong>
             <ul className="muted small" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
-              <li>Detecta las columnas de fecha, concepto e importe (también cargo y abono por separado).</li>
+              <li>Lee extractos en PDF (CaixaBank, Trade Republic, Revolut…), Excel y CSV, y detecta las columnas de fecha, concepto e importe (también entradas y salidas por separado).</li>
               <li>Marca los duplicados de importaciones anteriores y los deja fuera.</li>
               <li>Empareja los pagos del Atajo y los añadidos a mano (mismo importe, hasta 3 días de diferencia) y los confirma sin duplicarlos.</li>
               <li>Antes de guardar verás una vista previa.</li>
@@ -216,8 +265,8 @@ export function ImportStatement({ route }: { route: string }) {
             </Notice>
           )}
           <section className="card flush list">
-            {plan.map((r, i) => {
-              const auto = categorize(r.movement.description, r.movement.amount, sorted, true)
+            {plan.slice(0, limit).map((r, i) => {
+              const auto = autos[i]
               const match = r.matchId ? txById.get(r.matchId) : undefined
               const catId = i in overrides ? overrides[i] : (match?.categoryId ?? auto.categoryId)
               const cat = catId ? categoryById.get(catId) : undefined
@@ -283,6 +332,11 @@ export function ImportStatement({ route }: { route: string }) {
               )
             })}
           </section>
+          {plan.length > limit && (
+            <button className="btn" onClick={() => setLimit(limit + 400)}>
+              Mostrar más ({plan.length - limit} restantes)
+            </button>
+          )}
           <div className="tabbar" style={{ padding: '10px calc(16px + var(--safe-right)) calc(10px + var(--safe-bottom)) calc(16px + var(--safe-left))' }}>
             <div style={{ maxWidth: 720, margin: '0 auto' }}>
               <button className="btn primary block" disabled={busy || plan.every((r) => !r.include)} onClick={() => void save()}>

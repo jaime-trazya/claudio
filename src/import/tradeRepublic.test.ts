@@ -27,7 +27,7 @@ describe('lector del PDF de Trade Republic', () => {
     expect(etfs[2]).toMatchObject({ name: 'Apple Inc.', isin: 'US0378331005', kind: 'accion', units: 2 })
     const crypto = st.positions.filter((p) => p.kind === 'cripto')
     expect(crypto.map((c) => c.symbol)).toEqual(['BTC', 'ETH'])
-    expect(crypto[0]).toMatchObject({ name: 'Bitcoin (BTC)', price: 58432.1, value: cents(expected.cryptos[0].value) })
+    expect(crypto[0]).toMatchObject({ name: 'Bitcoin', price: 58432.1, value: cents(expected.cryptos[0].value) })
     expect(crypto[0].units).toBeCloseTo(0.012345, 6)
   })
 

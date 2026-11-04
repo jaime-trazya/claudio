@@ -4,16 +4,18 @@ import { parseDate } from '../lib/dates'
 import { normalize } from '../lib/text'
 import type { Cell, Row } from './csv'
 
-const H = {
+export const HEADER_WORDS = {
   date: ['fecha operacion', 'fecha de operacion', 'f operacion', 'fecha', 'f valor', 'fecha valor', 'date', 'dia'],
   desc: ['concepto', 'descripcion', 'movimiento', 'detalle', 'observaciones', 'concepto ampliado', 'comercio', 'beneficiario', 'description', 'texto'],
-  amount: ['importe', 'cantidad', 'importe eur', 'importe euros', 'amount', 'valor'],
+  amount: ['importe', 'cantidad', 'importe eur', 'importe euros', 'entradas salidas', 'entradas salidas de dinero', 'amount', 'valor'],
   debit: ['cargo', 'cargos', 'debe', 'debito', 'gasto', 'gastos', 'salida', 'salidas', 'reintegro'],
   credit: ['abono', 'abonos', 'haber', 'credito', 'ingreso', 'ingresos', 'entrada', 'entradas'],
   balance: ['saldo', 'saldo disponible', 'balance', 'saldo contable'],
 }
 
-function score(cell: Cell, words: string[]): number {
+const H = HEADER_WORDS
+
+export function score(cell: Cell, words: string[]): number {
   if (typeof cell !== 'string') return 0
   const n = normalize(cell)
   if (!n || n.length > 40) return 0
@@ -188,7 +190,12 @@ export function rowToMovement(r: Row, m: ColumnMapping, rowIndex = 0): ParsedMov
   const parts = [r[m.descCol], ...(m.extraDescCols ?? []).map((i) => r[i])]
     .filter((c) => c !== null && c !== undefined && String(c).trim() !== '')
     .map((c) => String(c).trim())
-  const description = parts.join(' · ')
+  let description = parts.join(' · ')
+  if (!description) {
+    // Sin concepto (p. ej. cortado por un salto de página): usar otra columna de texto
+    const other = r.find((c, i) => i !== m.dateCol && typeof c === 'string' && c.trim() && parseAmount(c) === null && parseDate(c) === null)
+    description = other ? String(other).trim() : 'Sin concepto'
+  }
   let amount: number | null = null
   if (m.amountCol !== null) {
     amount = parseAmount(r[m.amountCol])
@@ -198,7 +205,7 @@ export function rowToMovement(r: Row, m: ColumnMapping, rowIndex = 0): ParsedMov
     const credit = m.creditCol !== null ? parseAmount(r[m.creditCol]) : null
     if (debit || credit) amount = (credit ? Math.abs(credit) : 0) - (debit ? Math.abs(debit) : 0)
   }
-  if (amount === null || amount === 0 || !description) return null
+  if (amount === null || amount === 0) return null
   return { date, description, amount, rowIndex }
 }
 

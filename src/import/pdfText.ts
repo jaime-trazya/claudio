@@ -1,12 +1,25 @@
 /**
- * Extrae el texto de un PDF agrupado en líneas, con pdf.js.
+ * Extrae el texto de un PDF con pdf.js, conservando la posición de cada fragmento.
  * Recibe el módulo de pdf.js para poder usarlo tanto en el navegador como en los tests (Node).
  */
+
+export interface PdfItem {
+  str: string
+  x: number
+  y: number
+  page: number
+}
+
+export interface PdfLine {
+  page: number
+  y: number
+  items: PdfItem[]
+  text: string
+}
 
 interface TextItemLike {
   str: string
   transform: number[]
-  width: number
 }
 
 interface PdfjsLike {
@@ -19,52 +32,68 @@ interface PdfjsLike {
   }
 }
 
-export async function extractPdfLines(
-  data: ArrayBuffer | Uint8Array,
-  pdfjs: PdfjsLike,
-  options: Record<string, unknown> = {},
-): Promise<string[]> {
+export async function extractPdfItems(data: ArrayBuffer | Uint8Array, pdfjs: PdfjsLike, options: Record<string, unknown> = {}): Promise<PdfItem[]> {
   // pdf.js puede quedarse con el buffer: trabajamos con una copia
   const bytes = new Uint8Array(data instanceof Uint8Array ? data : new Uint8Array(data))
   const task = pdfjs.getDocument({ data: bytes, isEvalSupported: false, ...options })
   const doc = await task.promise
-  const lines: string[] = []
+  const out: PdfItem[] = []
   try {
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p)
       const content = await page.getTextContent()
-      const items = (content.items as TextItemLike[]).filter((i) => typeof i.str === 'string' && i.str.trim() !== '')
-      lines.push(...groupLines(items))
+      for (const i of content.items as TextItemLike[]) {
+        if (typeof i.str !== 'string' || !i.str.trim()) continue
+        out.push({ str: i.str.trim(), x: i.transform[4], y: i.transform[5], page: p })
+      }
     }
   } finally {
     await task.destroy()
   }
+  return out
+}
+
+/** Agrupa los fragmentos en líneas (misma página y misma altura), de arriba abajo */
+export function itemsToLines(items: PdfItem[]): PdfLine[] {
+  const lines: PdfLine[] = []
+  const byPage = new Map<number, PdfItem[]>()
+  for (const it of items) {
+    const list = byPage.get(it.page)
+    if (list) list.push(it)
+    else byPage.set(it.page, [it])
+  }
+  for (const page of [...byPage.keys()].sort((a, b) => a - b)) {
+    const rows: { y: number; items: PdfItem[] }[] = []
+    for (const it of byPage.get(page)!) {
+      const row = rows.find((r) => Math.abs(r.y - it.y) <= 2.5)
+      if (row) row.items.push(it)
+      else rows.push({ y: it.y, items: [it] })
+    }
+    rows.sort((a, b) => b.y - a.y)
+    for (const r of rows) {
+      const sorted = r.items.sort((a, b) => a.x - b.x)
+      lines.push({ page, y: r.y, items: sorted, text: sorted.map((i) => i.str).join(' ').replace(/\s+/g, ' ').trim() })
+    }
+  }
   return lines
 }
 
-export function groupLines(items: TextItemLike[]): string[] {
-  const rows: { y: number; items: TextItemLike[] }[] = []
-  for (const it of items) {
-    const y = it.transform[5]
-    const row = rows.find((r) => Math.abs(r.y - y) <= 2.5)
-    if (row) row.items.push(it)
-    else rows.push({ y, items: [it] })
-  }
-  rows.sort((a, b) => b.y - a.y)
-  return rows.map((r) =>
-    r.items
-      .sort((a, b) => a.transform[4] - b.transform[4])
-      .map((i) => i.str.trim())
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
-  )
+export async function extractPdfLines(data: ArrayBuffer | Uint8Array, pdfjs: PdfjsLike, options: Record<string, unknown> = {}): Promise<string[]> {
+  return itemsToLines(await extractPdfItems(data, pdfjs, options)).map((l) => l.text)
 }
 
-/** Carga pdf.js en el navegador (con su worker empaquetado por Vite) */
-export async function readPdfInBrowser(data: ArrayBuffer): Promise<string[]> {
+async function browserPdfjs(): Promise<PdfjsLike> {
   const pdfjs = await import('pdfjs-dist')
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
-  return extractPdfLines(data, pdfjs as unknown as PdfjsLike)
+  return pdfjs as unknown as PdfjsLike
+}
+
+/** Lee un PDF en el navegador (con su worker empaquetado por Vite), sin enviarlo a ningún sitio */
+export async function readPdfInBrowser(data: ArrayBuffer): Promise<string[]> {
+  return extractPdfLines(data, await browserPdfjs())
+}
+
+export async function readPdfLinesInBrowser(data: ArrayBuffer): Promise<PdfLine[]> {
+  return itemsToLines(await extractPdfItems(data, await browserPdfjs()))
 }

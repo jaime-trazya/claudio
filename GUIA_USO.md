@@ -89,7 +89,18 @@ En **Inicio**, pulsa **Importar pagos del Atajo** y elige `claudio-pagos.csv` en
 
 ### Descargar el extracto
 
-En la web o la app de tu banco: **Cuentas → Movimientos**, elige las fechas (por ejemplo, el mes anterior completo) y pulsa **Descargar / Exportar** en **Excel (XLS/XLSX)** o **CSV**. En el iPhone, guárdalo en **Archivos** (iCloud Drive o «En mi iPhone»).
+En la web o la app de tu banco: **Cuentas → Movimientos**, elige las fechas (por ejemplo, el mes anterior completo) y pulsa **Descargar / Exportar**. Sirven **PDF**, **Excel (XLS/XLSX)** o **CSV**. En el iPhone, guárdalo en **Archivos** (iCloud Drive o «En mi iPhone»).
+
+Formatos comprobados:
+
+| Banco | Qué descargar | Cómo lo lee la app |
+| --- | --- | --- |
+| CaixaBank | Movimientos en PDF (o Excel) | Una línea por movimiento: concepto, fecha, importe y saldo. Puedes bajar años enteros de golpe. |
+| Trade Republic (cuenta corriente) | «Extracto de cuenta» en PDF | Cada movimiento ocupa varias líneas (fecha partida, «Transacción con tarjeta»); entradas y salidas en columnas separadas. |
+| Revolut | «Extracto» o «Extracto personalizado» en PDF | El PDF trae varias tablas (cuenta en euros, otras divisas, cuenta remunerada). La app te pregunta cuál importar: elige **Cuenta personal (EUR)**. |
+| Otros bancos | PDF, Excel o CSV | Detección automática; si falla, eliges tú las columnas y se guarda como plantilla. |
+
+> Si un PDF es una foto escaneada (sin texto), la app no puede leerlo: descárgalo en Excel o CSV.
 
 > No pasa nada si las fechas se solapan con una importación anterior: los movimientos repetidos se detectan y se dejan fuera.
 
@@ -105,11 +116,25 @@ En la web o la app de tu banco: **Cuentas → Movimientos**, elige las fechas (p
    - **Ya estaba (pendiente)**: coincide con un pago del Atajo o uno añadido a mano (mismo importe y hasta 3 días de diferencia). No se duplica: se confirma el existente y se completa con los datos del banco.
    - **Elige**: hay varias coincidencias posibles. Indica cuál es o «crear como nuevo».
    - Las transferencias con **«Trade Republic»** en el concepto se marcan como **Aportación** (no cuentan como gasto).
+   - Los **traspasos entre tus propias cuentas** se marcan como **Traspaso** y no cuentan como gasto ni ingreso: recargas «Una recarga de Apple Pay», «Apple Pay Top up», «To/From Cuenta Remunerada» o los cargos «Revolut**…» en otro banco.
 5. Pulsa **Guardar**.
+
+**Si un traspaso tuyo no se detecta** (por ejemplo, «To Ana Ejemplo» cuando te pasas dinero a ti mismo): abre el movimiento, elige **Traspaso** y acepta **Aplicar siempre**. A partir de ahí se reconocerá solo.
+
+**Consejo para no duplicar:** importa cada cuenta en su propia cuenta de la app (Caixa en «CaixaBank», Revolut en «Revolut», la cuenta corriente de Trade Republic en «Trade Republic efectivo»). Así un traspaso de Caixa a Revolut aparece como salida en una y entrada en otra, sin contar como gasto.
 
 ---
 
 ## 6. Trade Republic
+
+Trade Republic tiene dos partes y la app las trata por separado:
+
+- **Cuenta corriente** (tarjeta, recargas, compras y ventas): crea una cuenta tipo **Banco** (por ejemplo «Trade Republic efectivo») e importa su **«Extracto de cuenta»** en PDF desde **Importar extracto**, como cualquier banco. Los pagos con tarjeta son gastos normales; «Buy trade» y «Sell trade» cuentan como **aportación** (y las ventas la restan); los dividendos e intereses, como ingreso.
+- **Inversiones** (ETF, acciones, cripto): crea una cuenta tipo **Inversión** («Trade Republic»). En «El efectivo de este bróker está en…» elige «Trade Republic efectivo»: así el efectivo no se cuenta dos veces en el patrimonio y lo aportado son tus compras menos tus ventas.
+
+Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta como aportado lo que envías desde el banco con «Trade Republic» en el concepto.
+
+### Extracto del patrimonio neto
 
 1. En la app de Trade Republic, descarga el PDF **«Extracto del patrimonio neto»** (según la versión de la app, en **Perfil → Documentos** o en los informes de la cuenta) y guárdalo en **Archivos**.
 2. En Claudio: **Patrimonio → Trade Republic → Importar extracto de Trade Republic** y elige el PDF. Se lee en el propio iPhone, sin enviarlo a ningún sitio.

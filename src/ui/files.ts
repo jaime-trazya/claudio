@@ -20,7 +20,7 @@ export function pickFile(accept: string): Promise<File | null> {
   })
 }
 
-export const ACCEPT_STATEMENT = '.csv,.txt,.xls,.xlsx,.ods,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+export const ACCEPT_STATEMENT = '.pdf,application/pdf,.csv,.txt,.xls,.xlsx,.ods,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 export const ACCEPT_SHORTCUT = '.csv,.txt,text/csv,text/plain'
 export const ACCEPT_PDF = '.pdf,application/pdf'
 export const ACCEPT_JSON = '.json,application/json'

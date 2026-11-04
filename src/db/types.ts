@@ -14,6 +14,11 @@ export interface Account {
   /** Nombre de la tarjeta tal y como lo escribe el Atajo de Apple Pay (p. ej. "Visa Débito") */
   cardAlias?: string
   archived?: boolean
+  /**
+   * Solo inversión: cuenta donde ya se registra el efectivo de este bróker (p. ej. la cuenta
+   * corriente de Trade Republic importada con su extracto). Así el efectivo no se cuenta dos veces.
+   */
+  cashAccountId?: string
   order: number
   createdAt: number
 }

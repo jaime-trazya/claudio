@@ -44,7 +44,10 @@ function sectionOf(text: string): Section | null {
 }
 
 const isHeaderLine = (n: string) =>
-  /unidades|descripcion|precio por|valor de mercado|valor del mercado|numero de posiciones|^total|^pagina|^page|isin$/.test(n)
+  /unidades nominal|^unidades$|descripcion|nombre del valor|precio por|valor de mercado|valor del mercado|valor en eur|numero de posiciones|^total|^pagina|^page|isin$/.test(n)
+
+/** Líneas informativas que no forman parte del nombre del valor */
+const isInfoLine = (n: string) => /^(cuenta de valores en|pais de custodia|extracto de|creado en|trade republic bank|www|nif|c velazquez|domicilio|registrad|directores)/.test(n)
 
 function guessKind(name: string, section: Section, isin?: string): PositionKind {
   if (section === 'cripto') return 'cripto'
@@ -121,7 +124,7 @@ export function parseTradeRepublic(lines: string[]): TRStatement {
       const value = parseAmount(pm[4])
       if (units !== null && price !== null && value !== null) {
         const isin = line.match(ISIN_RE)?.[1]
-        let name = cleanName(pm[2])
+        let name = cleanName(pm[2]).replace(/^(unidades|uds?\.?)\s+/i, '')
         let symbol: string | undefined
         const sym = name.match(/\(([A-Z0-9]{2,6})\)/)
         if (section === 'cripto') {
@@ -142,10 +145,19 @@ export function parseTradeRepublic(lines: string[]): TRStatement {
       if (isin && !current.isin) {
         current.isin = isin
         if (current.kind !== 'cripto') current.kind = guessKind(current.name, section, isin)
-        const rest = cleanName(line)
+        const rest = cleanName(line).replace(/\bunidades\b/i, '').trim()
         if (rest && !/\d/.test(rest) && rest.length > 2) current.name = `${current.name} ${rest}`.trim()
         continue
       }
+      // Cripto: el símbolo va en la línea siguiente ("LTC 04.11.2026")
+      if (section === 'cripto' && !current.symbol) {
+        const sym = cleanName(line).match(/^([A-Z0-9]{2,6})$/)
+        if (sym) {
+          current.symbol = sym[1]
+          continue
+        }
+      }
+      if (isInfoLine(n) || /^unidades$/.test(n)) continue
       // Continuación del nombre: texto sin números que no es cabecera ni total
       if (!/\d/.test(line) && !isHeaderLine(n) && line.length < 80) {
         current.name = `${current.name} ${line}`.trim()
