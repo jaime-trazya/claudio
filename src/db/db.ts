@@ -1,5 +1,5 @@
 import Dexie, { type Table, type Transaction as DexieTx } from 'dexie'
-import type { Account, Budget, Category, ImportLog, ImportTemplate, Rule, Setting, Snapshot, Transaction } from './types'
+import type { Account, Budget, Category, Goal, ImportLog, ImportTemplate, Rule, Setting, Snapshot, Transaction } from './types'
 import { DEFAULTS_VERSION, defaultCategories, defaultCategoriesWithVersion, defaultRules } from '../domain/defaults'
 
 export const DB_NAME = 'claudio-finanzas'
@@ -23,6 +23,7 @@ export class FinanzasDB extends Dexie {
   snapshots!: Table<Snapshot, string>
   imports!: Table<ImportLog, string>
   settings!: Table<Setting, string>
+  goals!: Table<Goal, string>
 
   constructor(name = DB_NAME) {
     super(name)
@@ -56,6 +57,9 @@ export class FinanzasDB extends Dexie {
             if (!t.updatedAt) t.updatedAt = t.createdAt ?? Date.now()
           }),
       )
+
+    // Versión 3: objetivos de ahorro
+    this.version(3).stores({ goals: 'id, accountId' })
 
     this.on('populate', (tx) => seed(tx))
   }
@@ -101,6 +105,12 @@ export async function syncDefaults(database: FinanzasDB = db): Promise<boolean> 
           t.categoryId = t.amount > 0 ? 'cat-transf-recibidas' : 'cat-transf-enviadas'
         })
     }
+    if (current < 4) {
+      // v4: los intereses de la cuenta remunerada son ingresos, no traspasos
+      await database.transactions
+        .filter((t) => t.kind === 'transferencia' && !t.transferId && /inter[eé]s neto pagado/i.test(t.description))
+        .modify({ kind: 'ingreso', categoryId: 'cat-intereses' })
+    }
     await database.settings.put({ key: 'defaultsVersion', value: DEFAULTS_VERSION })
   })
   return true
@@ -128,5 +138,5 @@ export async function reseed(database: FinanzasDB = db) {
   })
 }
 
-export const ALL_TABLES = ['accounts', 'categories', 'transactions', 'rules', 'budgets', 'templates', 'snapshots', 'imports', 'settings'] as const
+export const ALL_TABLES = ['accounts', 'categories', 'transactions', 'rules', 'budgets', 'templates', 'snapshots', 'imports', 'settings', 'goals'] as const
 export type TableName = (typeof ALL_TABLES)[number]

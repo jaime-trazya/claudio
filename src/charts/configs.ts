@@ -17,9 +17,13 @@ export function niceMax(values: number[]): number {
   return 10 * pow
 }
 
+/** Atenúa los meses no elegidos para resaltar el seleccionado */
+const dim = (color: string, i: number, selected: number | null | undefined) => (selected === null || selected === undefined || selected === i ? color : color + '55')
+
 export function incomeExpenseBars(
   months: { key: string; income: number; expenses: number }[],
   currency: string,
+  selected?: number | null,
 ): (c: Colors) => ChartConfiguration {
   return (c) => {
     const inc = months.map((m) => m.income / 100)
@@ -29,14 +33,14 @@ export function incomeExpenseBars(
       data: {
         labels: months.map((m) => monthTick(m.key)),
         datasets: [
-          { label: 'Ingresos', data: inc, backgroundColor: c.income, borderRadius: 0, barPercentage: 0.8, categoryPercentage: 0.7 },
-          { label: 'Gastos', data: exp, backgroundColor: c.accent, borderRadius: 0, barPercentage: 0.8, categoryPercentage: 0.7 },
+          { label: 'Ingresos', data: inc, backgroundColor: months.map((_, i) => dim(c.income, i, selected)), borderRadius: 0, barPercentage: 0.85, categoryPercentage: 0.75 },
+          { label: 'Gastos', data: exp, backgroundColor: months.map((_, i) => dim(c.accent, i, selected)), borderRadius: 0, barPercentage: 0.85, categoryPercentage: 0.75 },
         ],
       },
       options: {
         scales: {
-          x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-          y: { beginAtZero: true, max: niceMax([...inc, ...exp]), grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: euroTick(currency) } },
+          x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: months.length > 8, maxTicksLimit: months.length > 8 ? 6 : 12 } },
+          y: { beginAtZero: true, max: niceMax([...inc, ...exp]), grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 4, callback: euroTick(currency) } },
         },
         plugins: {
           tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatMoney(Math.round(Number(ctx.raw) * 100), { currency })}` } },
@@ -91,7 +95,7 @@ export function lineSeries(
   }
 }
 
-export function savingsRateLine(points: { key: string; rate: number | null }[]): (c: Colors) => ChartConfiguration {
+export function savingsRateLine(points: { key: string; rate: number | null }[], selected?: number | null): (c: Colors) => ChartConfiguration {
   return (c) => ({
     type: 'bar',
     data: {
@@ -101,7 +105,7 @@ export function savingsRateLine(points: { key: string; rate: number | null }[]):
           label: 'Tasa de ahorro',
           // Se corta en ±100 %: un −800 % aplasta el resto de meses y no dice nada útil
           data: points.map((p) => (p.rate === null ? null : Math.max(-100, Math.min(100, Math.round(p.rate * 100))))),
-          backgroundColor: points.map((p) => (p.rate !== null && p.rate < 0 ? c.negative : c.accent)),
+          backgroundColor: points.map((p, i) => dim(p.rate !== null && p.rate < 0 ? c.negative : c.accent, i, selected)),
           borderRadius: 0,
           barPercentage: 0.6,
         },
@@ -109,7 +113,7 @@ export function savingsRateLine(points: { key: string; rate: number | null }[]):
     },
     options: {
       scales: {
-        x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+        x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: points.length > 8, maxTicksLimit: points.length > 8 ? 6 : 12 } },
         y: { min: points.some((p) => p.rate !== null && p.rate < 0) ? -100 : 0, suggestedMax: 50, max: 100, grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 5, callback: (v) => `${v} %` } },
       },
       plugins: {
@@ -156,6 +160,23 @@ export function donut(slices: { label: string; value: number; color: string }[],
             callbacks: { label: (ctx) => `${ctx.label}: ${formatMoney(Math.round(Number(ctx.raw) * 100), { currency })}` },
           },
         },
+      },
+    }
+  }
+}
+
+export function singleBars(points: { key: string; amount: number }[], currency: string, color?: string): (c: Colors) => ChartConfiguration {
+  return (c) => {
+    const data = points.map((p) => p.amount / 100)
+    return {
+      type: 'bar',
+      data: { labels: points.map((p) => monthTick(p.key)), datasets: [{ label: 'Gasto', data, backgroundColor: color ?? c.accent, borderRadius: 0, barPercentage: 0.7 }] },
+      options: {
+        scales: {
+          x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: points.length > 8, maxTicksLimit: 6 } },
+          y: { beginAtZero: true, max: niceMax(data), grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 4, callback: euroTick(currency) } },
+        },
+        plugins: { tooltip: { callbacks: { label: (ctx) => formatMoney(Math.round(Number(ctx.raw) * 100), { currency }) } } },
       },
     }
   }

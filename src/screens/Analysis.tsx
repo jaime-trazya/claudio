@@ -6,8 +6,8 @@ import { CategoryPicker, CategoryTile, Money, PeriodSwitch, Segmented, Sheet } f
 import { navigate, routeParams } from '../ui/router'
 import { categoryLabel, txTitle } from '../ui/format'
 import { ChartCanvas } from '../charts/ChartCanvas'
-import { donut, incomeExpenseBars, lineSeries, savingsRateLine } from '../charts/configs'
-import { balanceSeries, comparableRange, delta, expensesByCategory, monthlySeries, periodRange, summarize, topExpenses, topMerchants, type PeriodType } from '../domain/stats'
+import { donut, incomeExpenseBars, lineSeries, savingsRateLine, singleBars } from '../charts/configs'
+import { balanceSeries, categoryMonthly, comparableRange, delta, expensesByCategory, monthlySeries, periodRange, summarize, topExpenses, topMerchants, type PeriodType } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
 import { detectRecurring, recurringTotals } from '../domain/recurring'
 import { accountingMonth, formatShortDate, monthRange, monthsBetween, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
@@ -67,6 +67,7 @@ function Summary() {
   const today = todayISO()
   const [custom, setCustom] = useState<DateRange>(() => ({ start: accountingMonth(today, settings.monthStartDay).start, end: today }))
   const [picked, setPicked] = useState<string | null>(null)
+  const [detail, setDetail] = useState<string | null>(null)
   const currency = settings.currency
 
   const period = periodRange(type, offset, settings.monthStartDay, today, custom)
@@ -77,7 +78,9 @@ function Summary() {
   const byCat = useMemo(() => expensesByCategory(transactions, period, categories), [transactions, period.start, period.end, categories]) // eslint-disable-line react-hooks/exhaustive-deps
   // Las gráficas mensuales siguen al periodo: el año elegido, o los 12 meses que acaban en el periodo
   const chartEnd = period.end < today ? period.end : today
-  const nMonths = type === 'personalizado' ? Math.min(24, Math.max(1, monthsBetween(period.start, period.end))) : 12
+  const [span, setSpan] = useState<6 | 12>(() => (typeof window !== 'undefined' && window.innerWidth < 560 ? 6 : 12))
+  const [selMonth, setSelMonth] = useState<number | null>(null)
+  const nMonths = type === 'personalizado' ? Math.min(24, Math.max(1, monthsBetween(period.start, period.end))) : type === 'año' ? 12 : span
   const months = useMemo(() => monthlySeries(transactions, nMonths, settings.monthStartDay, type === 'año' ? period.end : chartEnd, categoryById), [transactions, nMonths, settings.monthStartDay, type, period.end, chartEnd, categoryById])  
   const monthsLabel = `${monthLabel(months[0].key)} – ${monthLabel(months[months.length - 1].key)}`
   const balances = useMemo(() => balanceSeries(accounts, transactions, months), [accounts, transactions, months])
@@ -98,9 +101,11 @@ function Summary() {
   }, [byCat, categoryById])
 
   const donutBuild = useCallback((c: Parameters<ReturnType<typeof donut>>[0]) => donut(slices, currency, (i) => setPicked(slices[i]?.id ?? null))(c), [slices, currency])
-  const barsBuild = useMemo(() => incomeExpenseBars(months, currency), [months, currency])
+  const sel = selMonth !== null && selMonth < months.length ? selMonth : null
+  const barsBuild = useMemo(() => incomeExpenseBars(months, currency, sel), [months, currency, sel])
   const balanceBuild = useMemo(() => lineSeries(balances.map((b) => ({ label: monthShort(Number(b.key.slice(5)) - 1), value: b.balance })), currency), [balances, currency])
-  const savingsBuild = useMemo(() => savingsRateLine(months.map((m) => ({ key: m.key, rate: m.savingsRate }))), [months])
+  const savingsBuild = useMemo(() => savingsRateLine(months.map((m) => ({ key: m.key, rate: m.savingsRate })), sel), [months, sel])
+  const pickMonth = useCallback((i: number) => setSelMonth((cur) => (cur === i ? null : i)), [])
   const hasMonths = months.some((m) => m.income || m.expenses)
 
   return (
@@ -197,6 +202,9 @@ function Summary() {
                 </button>
                 {open && (
                   <div className="stack" style={{ gap: 0, padding: '0 0 8px 44px' }}>
+                    <button className="btn small" style={{ alignSelf: 'flex-start', margin: '2px 0 6px' }} onClick={() => setDetail(c.categoryId ?? 'none')}>
+                      Ver evolución y comercios
+                    </button>
                     {c.children.map((ch) => (
                       <button
                         key={ch.categoryId ?? 'none'}
@@ -221,17 +229,29 @@ function Summary() {
           <h2>Ingresos y gastos</h2>
           <span className="meta">{monthsLabel}</span>
         </div>
-        <div className="legend">
-          <span>
-            <i style={{ background: 'var(--chart-income)' }} />
-            Ingresos
-          </span>
-          <span>
-            <i style={{ background: 'var(--accent)' }} />
-            Gastos
-          </span>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <div className="legend" style={{ marginBottom: 0 }}>
+            <span>
+              <i style={{ background: 'var(--chart-income)' }} />
+              Ingresos
+            </span>
+            <span>
+              <i style={{ background: 'var(--accent)' }} />
+              Gastos
+            </span>
+          </div>
+          {type !== 'año' && type !== 'personalizado' && (
+            <div className="segmented" style={{ padding: 2 }}>
+              {([6, 12] as const).map((n) => (
+                <button key={n} aria-pressed={span === n} style={{ minHeight: 28, padding: '0 10px', fontSize: 13, whiteSpace: 'nowrap' }} onClick={() => { setSpan(n); setSelMonth(null) }}>
+                  {n}M
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <ChartCanvas build={barsBuild} height={190} isEmpty={!hasMonths} emptyText="Cuando importes movimientos verás aquí cada mes" label="Ingresos frente a gastos por mes" />
+        <ChartCanvas build={barsBuild} height={200} isEmpty={!hasMonths} emptyText="Cuando importes movimientos verás aquí cada mes" label="Ingresos frente a gastos por mes" onSelect={pickMonth} />
+        <MonthDetail month={sel !== null ? months[sel] : null} hint={hasMonths} />
       </section>
 
       <section className="card">
@@ -239,7 +259,12 @@ function Summary() {
           <h2>Saldo total</h2>
           <Money cents={balances[balances.length - 1]?.balance ?? 0} plain />
         </div>
-        <ChartCanvas build={balanceBuild} height={180} isEmpty={!accounts.length} emptyText="Crea una cuenta para ver su evolución" label="Evolución del saldo total" />
+        <ChartCanvas build={balanceBuild} height={180} isEmpty={!accounts.length} emptyText="Crea una cuenta para ver su evolución" label="Evolución del saldo total" onSelect={pickMonth} />
+        {sel !== null && balances[sel] && (
+          <p className="small" style={{ marginTop: 8 }}>
+            <strong>Fin de {monthLabel(balances[sel].key)}:</strong> <Money cents={balances[sel].balance} plain />
+          </p>
+        )}
         <p className="meta" style={{ marginTop: 6 }}>Saldo de bancos, tarjetas y efectivo al final de cada mes. Las inversiones están en Patrimonio.</p>
       </section>
 
@@ -248,7 +273,12 @@ function Summary() {
           <h2>Tasa de ahorro mensual</h2>
           <span className="meta">{monthsLabel}</span>
         </div>
-        <ChartCanvas build={savingsBuild} height={160} isEmpty={!months.some((m) => m.income)} emptyText="Aparecerá cuando haya ingresos" label="Tasa de ahorro mensual" />
+        <ChartCanvas build={savingsBuild} height={170} isEmpty={!months.some((m) => m.income)} emptyText="Aparecerá cuando haya ingresos" label="Tasa de ahorro mensual" onSelect={pickMonth} />
+        {sel !== null && (
+          <p className="small" style={{ marginTop: 8 }}>
+            <strong>{monthLabel(months[sel].key)}:</strong> {months[sel].savingsRate === null ? 'sin ingresos' : `ahorro ${formatRate(months[sel].savingsRate)}`}
+          </p>
+        )}
         <p className="meta" style={{ marginTop: 6 }}>Lo que te queda de lo que ingresas cada mes. Por debajo de cero, gastaste más de lo que entró (la barra se corta en −100 %).</p>
       </section>
 
@@ -297,7 +327,100 @@ function Summary() {
           )}
         </div>
       </section>
+      {detail && <CategoryDetail categoryId={detail === 'none' ? null : detail} period={period} onClose={() => setDetail(null)} />}
     </>
+  )
+}
+
+/** Evolución de una categoría en los últimos 12 meses, su media y dónde se gasta */
+function CategoryDetail({ categoryId, period, onClose }: { categoryId: string | null; period: DateRange; onClose: () => void }) {
+  const { transactions, categories, categoryById, settings } = useData()
+  const cat = categoryId ? categoryById.get(categoryId) : undefined
+  const months = useMemo(() => monthlySeries([], 12, settings.monthStartDay, period.end < todayISO() ? period.end : todayISO()), [settings.monthStartDay, period.end])
+  const series = useMemo(() => categoryMonthly(transactions, categoryId, months, categories), [transactions, categoryId, months, categories])
+  const build = useMemo(() => singleBars(series, settings.currency, cat?.color), [series, settings.currency, cat?.color])
+  const active = series.filter((m) => m.amount > 0)
+  const avg = active.length ? Math.round(series.reduce((s, m) => s + m.amount, 0) / series.length) : 0
+  const ids = categoryId ? new Set([categoryId, ...categories.filter((c) => c.parentId === categoryId).map((c) => c.id)]) : null
+  const inCat = transactions.filter((t) => (ids ? !!t.categoryId && ids.has(t.categoryId) : !t.categoryId && t.kind === 'gasto'))
+  const merchants = topMerchants(inCat, period, 6)
+  const year = { start: months[0].start, end: months[months.length - 1].end }
+  const total12 = series.reduce((s, m) => s + m.amount, 0)
+  return (
+    <Sheet title={cat?.name ?? 'Sin categoría'} onClose={onClose} full>
+      <div className="card flush">
+        <div className="kpis">
+          <div className="kpi">
+            <div className="card-label">Media al mes</div>
+            <Money cents={-avg} plain />
+            <div className="meta">últimos 12 meses</div>
+          </div>
+          <div className="kpi">
+            <div className="card-label">En 12 meses</div>
+            <Money cents={-total12} plain />
+            <div className="meta">{formatShortDate(year.start)} – {formatShortDate(year.end)}</div>
+          </div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head">
+          <h3>Mes a mes</h3>
+        </div>
+        <ChartCanvas build={build} height={180} isEmpty={!active.length} emptyText="Sin gastos en estos meses" label={`Gasto mensual en ${cat?.name ?? 'sin categoría'}`} />
+      </div>
+      <div className="card flush">
+        <div className="card-head" style={{ padding: 'var(--pad) var(--pad) 0' }}>
+          <h3>Dónde, en el periodo elegido</h3>
+        </div>
+        <div className="list">
+          {merchants.length ? (
+            merchants.map((m) => (
+              <div key={m.key} className="list-item">
+                <div className="grow">
+                  <div className="primary-line ellipsis">{m.name}</div>
+                  <div className="secondary-line">{m.count} compra{m.count === 1 ? '' : 's'}</div>
+                </div>
+                <Money cents={-m.amount} plain />
+              </div>
+            ))
+          ) : (
+            <p className="empty small">Nada en este periodo</p>
+          )}
+        </div>
+      </div>
+      <a className="btn block" href={`#/movimientos?cat=${categoryId ?? 'none'}`} onClick={onClose}>
+        Ver todos los movimientos
+      </a>
+    </Sheet>
+  )
+}
+
+/** Detalle del mes tocado en la gráfica (en el móvil, en lugar de un globo encima de las barras) */
+function MonthDetail({ month, hint }: { month: { key: string; income: number; expenses: number; balance: number; savingsRate: number | null } | null; hint: boolean }) {
+  if (!month) return hint ? <p className="meta" style={{ marginTop: 8, textAlign: 'center' }}>Toca un mes para ver el detalle</p> : null
+  return (
+    <div className="card" style={{ marginTop: 10, padding: '12px 14px', background: 'var(--raised)', borderColor: 'transparent' }}>
+      <div className="row between">
+        <strong>{monthLabel(month.key)}</strong>
+        <a className="small" href={`#/movimientos?mes=${month.key}`}>
+          Ver movimientos
+        </a>
+      </div>
+      <div className="row" style={{ gap: 16, marginTop: 6, flexWrap: 'wrap' }}>
+        <span className="small">
+          <span className="muted">Ingresos </span>
+          <Money cents={month.income} sign />
+        </span>
+        <span className="small">
+          <span className="muted">Gastos </span>
+          <Money cents={-month.expenses} plain />
+        </span>
+        <span className="small">
+          <span className="muted">Balance </span>
+          <Money cents={month.balance} sign />
+        </span>
+      </div>
+    </div>
   )
 }
 

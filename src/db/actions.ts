@@ -104,10 +104,11 @@ export interface StatementImportInput {
   categoryOverrides?: Record<number, string | null>
   /** Saldo del banco al final del extracto: si se indica, se ajusta el saldo inicial para cuadrar */
   bankBalance?: { date: string; balance: number } | null
+  fingerprint?: string
 }
 
 /** Guarda el extracto según la vista previa: crea los nuevos y concilia los emparejados */
-export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {}, bankBalance }: StatementImportInput) {
+export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {}, bankBalance, fingerprint }: StatementImportInput) {
   const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const importId = uid()
   let added = 0
@@ -168,7 +169,7 @@ export async function applyStatementImport({ rows, accountId, fileName, category
       )
       added++
     }
-    await db.imports.add({ id: importId, type: 'extracto', fileName, accountId, added, reconciled, skipped, createdAt: now() })
+    await db.imports.add({ id: importId, type: 'extracto', fileName, accountId, added, reconciled, skipped, fingerprint, createdAt: now() })
   })
   const adjusted = bankBalance ? await matchBankBalance(accountId, bankBalance) : 0
   return { added, reconciled, skipped, adjusted }
@@ -294,8 +295,11 @@ export const RULES_FILE_TYPE = 'claudio-reglas'
 
 export interface RulesFile {
   type: typeof RULES_FILE_TYPE
-  version: 1
+  version: 1 | 2
   rules: { keyword: string; categoryId: string; kind?: TxKind }[]
+  /** v2 (perfil): presupuestos mensuales y ajustes personales opcionales */
+  budgets?: { categoryId: string; amount: number }[]
+  settings?: { ownerName?: string }
 }
 
 /** Exporta tus reglas (las creadas por ti) para guardarlas o pasarlas a otro dispositivo */
@@ -308,7 +312,7 @@ export async function exportRules(): Promise<RulesFile> {
  * Importa reglas de un archivo: las añade como tuyas y recategoriza los movimientos que encajan.
  * Se saltan las que apuntan a categorías que no existen.
  */
-export async function importRules(data: unknown): Promise<{ added: number; skipped: number; changed: number }> {
+export async function importRules(data: unknown): Promise<{ added: number; skipped: number; changed: number; budgets: number }> {
   const file = data as Partial<RulesFile>
   if (!file || file.type !== RULES_FILE_TYPE || !Array.isArray(file.rules)) throw new Error('El archivo no es un archivo de reglas de esta app.')
   const cats = new Set(await db.categories.toCollection().primaryKeys())
@@ -324,5 +328,55 @@ export async function importRules(data: unknown): Promise<{ added: number; skipp
     changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined)
     added++
   }
-  return { added, skipped, changed }
+  // Perfil: presupuestos (solo para categorías que aún no tienen) y tu nombre (si no lo habías puesto)
+  let budgets = 0
+  for (const b of file.budgets ?? []) {
+    if (!b || typeof b.categoryId !== 'string' || !cats.has(b.categoryId) || !(b.amount > 0)) continue
+    if (await db.budgets.where('categoryId').equals(b.categoryId).count()) continue
+    await db.budgets.add({ id: uid(), categoryId: b.categoryId, amount: Math.round(b.amount) })
+    budgets++
+  }
+  const owner = file.settings?.ownerName?.trim()
+  if (owner && !(await getSettings()).ownerName) await setSetting('ownerName', owner)
+  return { added, skipped, changed, budgets }
+}
+
+/** Traspasos hacia o desde una cuenta de ahorro ("To/From Cuenta Remunerada", "A EUR Cuenta Remunerada") */
+export const SAVINGS_TRANSFER = /cuenta remunerada|cuenta de ahorro|\bahorros?\b|savings|hucha|pocket|vault/i
+
+/**
+ * Crea en la cuenta de destino la otra pata de los traspasos de la cuenta de origen
+ * (p. ej. los envíos a la Cuenta Remunerada de Revolut) y los enlaza. No duplica si ya existen.
+ */
+export async function mirrorTransfers(fromId: string, toId: string, pattern: RegExp = SAVINGS_TRANSFER): Promise<number> {
+  const from = await db.transactions.where('accountId').equals(fromId).toArray()
+  const existing = new Set((await db.transactions.where('accountId').equals(toId).toArray()).map((t) => t.externalId).filter(Boolean))
+  const legs: Transaction[] = []
+  const updates: Transaction[] = []
+  for (const t of from) {
+    if (!pattern.test(t.bankDescription ?? t.description)) continue
+    const ext = `espejo-${t.id}`
+    if (existing.has(ext)) continue
+    const transferId = t.transferId ?? uid()
+    legs.push(newTransaction({ accountId: toId, date: t.date, amount: -t.amount, description: t.description, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, externalId: ext, source: 'extracto' }))
+    updates.push({ ...t, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, updatedAt: now() })
+  }
+  await db.transaction('rw', db.transactions, async () => {
+    if (legs.length) await db.transactions.bulkAdd(legs)
+    if (updates.length) await db.transactions.bulkPut(updates)
+  })
+  return legs.length
+}
+
+/**
+ * "Corregir saldo": crea un ajuste para que el saldo de la cuenta sea el real.
+ * Cuenta como traspaso: no altera ingresos ni gastos.
+ */
+export async function correctBalance(account: Account, current: number, real: number, date: string): Promise<number> {
+  const diff = real - current
+  if (!diff) return 0
+  await db.transactions.add(
+    newTransaction({ accountId: account.id, date, amount: diff, description: 'Ajuste de saldo', kind: 'transferencia', categoryId: 'cat-transferencia', externalId: `ajuste-${uid()}`, notes: 'Corrección manual para que coincida con el saldo real' }),
+  )
+  return diff
 }

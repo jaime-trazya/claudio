@@ -65,3 +65,12 @@ export function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
+
+/** Huella de un archivo (primeros 256 KB + tamaño), para avisar si se importa dos veces */
+export function fileFingerprint(bytes: Uint8Array): string {
+  let s = String(bytes.length)
+  const n = Math.min(bytes.length, 262144)
+  for (let i = 0; i < n; i += 7) s += String.fromCharCode(bytes[i])
+  return hash(s)
+}
+

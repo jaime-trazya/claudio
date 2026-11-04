@@ -24,6 +24,8 @@ export interface PlanRow {
   /** Posibles coincidencias cuando hay dudas */
   options: string[]
   include: boolean
+  /** Duplicado que ya está guardado en otra cuenta (id de la cuenta) */
+  elsewhere?: string
 }
 
 export const RECONCILE_DAYS = 3
@@ -59,20 +61,42 @@ function rank(mv: ParsedMovement, tx: Transaction): number {
  * 3. Si hay varias coincidencias posibles, la fila queda "dudosa" para que el usuario elija.
  * Las filas idénticas dentro del mismo archivo se respetan (dos cafés iguales el mismo día).
  */
+/** Clave por saldo: mismo día, importe y saldo del banco = mismo movimiento aunque el concepto cambie */
+const balanceKey = (accountId: string, date: string, amount: number, balance: number) => `${accountId}|${date}|${amount}|b${balance}`
+
 export function planImport(movements: ParsedMovement[], accountId: string, existing: Transaction[]): PlanRow[] {
   const keyCount = new Map<string, number>()
+  const balCount = new Map<string, number>()
+  // Lo mismo en otras cuentas (p. ej. un extracto importado antes en la cuenta equivocada)
+  const elsewhere = new Map<string, { accountId: string; n: number }>()
+  const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1)
   for (const tx of existing) {
-    if (tx.accountId !== accountId) continue
-    const k = existingKey(tx)
-    keyCount.set(k, (keyCount.get(k) ?? 0) + 1)
+    if (tx.accountId === accountId) {
+      bump(keyCount, existingKey(tx))
+      if (tx.bankBalance !== undefined) bump(balCount, balanceKey(accountId, tx.bankDate ?? tx.date, tx.amount, tx.bankBalance))
+    } else if (tx.source === 'extracto') {
+      const k = dupKey('*', tx.bankDate ?? tx.date, tx.amount, tx.bankDescription ?? tx.description)
+      const e = elsewhere.get(k)
+      if (e) e.n++
+      else elsewhere.set(k, { accountId: tx.accountId, n: 1 })
+    }
+  }
+  const take = (m: Map<string, number>, k: string) => {
+    const n = m.get(k) ?? 0
+    if (n > 0) m.set(k, n - 1)
+    return n > 0
   }
 
   const rows: PlanRow[] = movements.map((mv) => {
     const key = dupKey(accountId, mv.date, mv.amount, mv.description)
-    const n = keyCount.get(key) ?? 0
-    if (n > 0) {
-      keyCount.set(key, n - 1)
+    if (take(keyCount, key)) return { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false }
+    if (mv.balance !== undefined && take(balCount, balanceKey(accountId, mv.date, mv.amount, mv.balance))) {
       return { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false }
+    }
+    const other = elsewhere.get(dupKey('*', mv.date, mv.amount, mv.description))
+    if (other && other.n > 0) {
+      other.n--
+      return { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false, elsewhere: other.accountId }
     }
     return { movement: mv, key, status: 'nuevo', matchId: null, options: [], include: true }
   })

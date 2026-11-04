@@ -72,13 +72,13 @@ export function RulesScreen() {
             if (!file) return
             try {
               const res = await importRules(JSON.parse(await file.text()))
-              toast.show(`${res.added} reglas importadas · ${res.changed} movimientos recategorizados${res.skipped ? ` · ${res.skipped} omitidas` : ''}`)
+              toast.show(`${res.added} reglas importadas · ${res.changed} movimientos recategorizados${res.budgets ? ` · ${res.budgets} presupuestos` : ''}${res.skipped ? ` · ${res.skipped} omitidas` : ''}`)
             } catch (e) {
               toast.show((e as Error).message || 'No se ha podido leer el archivo')
             }
           }}
         >
-          Importar reglas
+          Importar reglas o perfil
         </button>
         <button
           className="btn small"

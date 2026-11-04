@@ -14,6 +14,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const snapshots = useLiveQuery(() => db.snapshots.orderBy('date').toArray(), [])
   const templates = useLiveQuery(() => db.templates.toArray(), [])
   const settingsRows = useLiveQuery(() => db.settings.toArray(), [])
+  const goals = useLiveQuery(() => db.goals.toArray(), [])
 
   const value = useMemo<AppData>(() => {
     const settings = { ...DEFAULT_SETTINGS } as Record<string, unknown>
@@ -21,7 +22,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const cats = categories ?? []
     const accs = accounts ?? []
     return {
-      ready: [accounts, categories, transactions, rules, budgets, snapshots, templates, settingsRows].every((x) => x !== undefined),
+      ready: [accounts, categories, transactions, rules, budgets, snapshots, templates, settingsRows, goals].every((x) => x !== undefined),
       accounts: accs,
       categories: cats,
       transactions: transactions ?? [],
@@ -29,11 +30,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       budgets: budgets ?? [],
       snapshots: snapshots ?? [],
       templates: templates ?? [],
+      goals: goals ?? [],
       settings: settings as unknown as Settings,
       categoryById: new Map(cats.map((c) => [c.id, c])),
       accountById: new Map(accs.map((a) => [a.id, a])),
     }
-  }, [accounts, categories, transactions, rules, budgets, snapshots, templates, settingsRows])
+  }, [accounts, categories, transactions, rules, budgets, snapshots, templates, settingsRows, goals])
 
   return <DataCtx.Provider value={value}>{children}</DataCtx.Provider>
 }

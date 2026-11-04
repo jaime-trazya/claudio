@@ -154,6 +154,8 @@ export interface ImportLog {
   added: number
   reconciled: number
   skipped: number
+  /** Huella del archivo para avisar si se vuelve a importar el mismo */
+  fingerprint?: string
   createdAt: number
 }
 
@@ -193,4 +195,16 @@ export const DEFAULT_SETTINGS: Settings = {
   ownerName: '',
   accentColor: '',
   defaultsVersion: 1,
+}
+
+export interface Goal {
+  id: string
+  name: string
+  target: Cents
+  /** Si se enlaza a una cuenta, lo ahorrado es su saldo; si no, se apunta a mano */
+  accountId?: string
+  saved: Cents
+  deadline?: ISODate
+  color: string
+  createdAt: number
 }

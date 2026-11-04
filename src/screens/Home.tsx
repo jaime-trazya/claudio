@@ -2,12 +2,13 @@ import { ArrowLeftRight, CircleCheck, CloudUpload, FileUp, Plus, Smartphone, Tre
 import { useData } from '../ui/useData'
 import { useEditor } from '../ui/editor'
 import { useToast } from '../ui/toast'
-import { Money, Notice } from '../ui/components'
+import { CategoryTile, Money, Notice } from '../ui/components'
+import { detectRecurring } from '../domain/recurring'
 import { TxRow } from '../ui/TxRow'
 import { navigate } from '../ui/router'
 import { useShortcutImport } from '../ui/useShortcutImport'
 import { isIOS, isStandalone } from '../ui/files'
-import { accountingMonth, daysBetween, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
+import { accountingMonth, daysBetween, formatShortDate, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
 import { formatMoney, formatRate } from '../lib/money'
 import { accountBalance, comparableRange, summarize } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
@@ -48,7 +49,13 @@ export function Home() {
   const statuses = budgets.map((b) => budgetStatus(b, transactions, month, categories))
   const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0)
   const pending = transactions.filter((t) => t.status === 'pendiente')
-  const recent = transactions.slice(0, 5)
+  const upcoming = detectRecurring(transactions, today)
+    .filter((r) => !settings.dismissedRecurring.includes(r.key) && daysBetween(today, r.nextDate) <= 10 && daysBetween(today, r.nextDate) >= -3)
+    .sort((a, b) => a.nextDate.localeCompare(b.nextDate))
+    .slice(0, 4)
+  // Sin traspasos entre tus cuentas: en Inicio solo lo que de verdad entra o sale
+  // (ni los intereses diarios de céntimos de la cuenta remunerada)
+  const recent = transactions.filter((t) => t.kind !== 'transferencia' && !(t.categoryId === 'cat-intereses' && Math.abs(t.amount) < 100)).slice(0, 5)
   const hasInvestment = accounts.some((a) => a.type === 'inversion')
   const totalDays = daysBetween(month.start, month.end) + 1
   const dayN = daysBetween(month.start, today) + 1
@@ -276,6 +283,29 @@ export function Home() {
             )}
           </div>
         </section>
+      )}
+
+      {upcoming.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2 className="section-title">Próximos cargos</h2>
+            <a className="link" href="#/analisis?vista=recurrentes">
+              Todos
+            </a>
+          </div>
+          <section className="card flush list">
+            {upcoming.map((r) => (
+              <div key={r.key} className="list-item">
+                <CategoryTile category={r.categoryId ? categoryById.get(r.categoryId) : null} size="sm" />
+                <div className="grow">
+                  <div className="primary-line ellipsis">{r.name}</div>
+                  <div className="secondary-line">{daysBetween(today, r.nextDate) <= 0 ? 'Hoy o ya' : daysBetween(today, r.nextDate) === 1 ? 'Mañana' : `En ${daysBetween(today, r.nextDate)} días`} · {formatShortDate(r.nextDate)}</div>
+                </div>
+                <Money cents={-r.monthly} plain />
+              </div>
+            ))}
+          </section>
+        </>
       )}
 
       <div className="section-head">

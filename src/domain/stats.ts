@@ -197,11 +197,15 @@ export function accountBalance(account: Account, txs: Transaction[], until?: ISO
   for (const tx of txs) {
     if (tx.accountId !== account.id) continue
     if (until && tx.date > until) continue
-    if (anchor && (tx.bankBalance !== undefined || tx.date <= anchor.bankEffDate!)) continue
+    // Los ajustes de saldo hechos a mano después de importar el extracto siempre cuentan
+    const lateAdjustment = isAdjustment(tx) && tx.createdAt > (anchor?.createdAt ?? 0)
+    if (anchor && !lateAdjustment && (tx.bankBalance !== undefined || tx.date <= anchor.bankEffDate!)) continue
     b += tx.amount
   }
   return b
 }
+
+export const isAdjustment = (tx: Transaction) => !!tx.externalId?.startsWith('ajuste-')
 
 /**
  * Para cada movimiento de un extracto (en el orden del archivo) calcula su posición cronológica
@@ -259,4 +263,20 @@ export function topMerchants(txs: Transaction[], range: DateRange, n = 5): Merch
     m.count++
   }
   return [...map.values()].sort((a, b) => b.amount - a.amount).slice(0, n)
+}
+
+/** Gasto neto de una categoría (y sus subcategorías) en cada mes de la serie */
+export function categoryMonthly(txs: Transaction[], categoryId: string | null, months: { key: string; start: ISODate; end: ISODate }[], categories: Category[]): { key: string; amount: number }[] {
+  const ids = categoryId ? new Set([categoryId, ...categories.filter((c) => c.parentId === categoryId).map((c) => c.id)]) : null
+  return months.map((m) => {
+    let amount = 0
+    for (const tx of txs) {
+      if (!isCountable(tx) || !inRange(tx.date, m)) continue
+      for (const p of parts(tx)) {
+        const match = ids ? !!p.categoryId && ids.has(p.categoryId) : !p.categoryId
+        if (match && (p.amount < 0 || ids)) amount -= p.amount
+      }
+    }
+    return { key: m.key, amount: Math.max(0, amount) }
+  })
 }

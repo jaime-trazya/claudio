@@ -14,6 +14,7 @@ import { formatShortDate, monthShort, todayISO } from '../lib/dates'
 import { BankBadge } from '../ui/BankBadge'
 import { db } from '../db/db'
 import { useTRImport } from '../ui/useTRImport'
+import { GoalsSection } from './Goals'
 import type { Account, PositionKind } from '../db/types'
 
 const TYPE_LABEL: Record<Account['type'], string> = { banco: 'Banco', tarjeta: 'Tarjeta', efectivo: 'Efectivo', inversion: 'Inversión' }
@@ -85,6 +86,8 @@ export function Wealth() {
           </div>
         )}
       </section>
+
+      <GoalsSection />
 
       <div className="section-head">
         <h2 className="section-title">Inversiones</h2>

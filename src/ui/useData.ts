@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Account, Budget, Category, ImportTemplate, Rule, Settings, Snapshot, Transaction } from '../db/types'
+import type { Account, Budget, Category, Goal, ImportTemplate, Rule, Settings, Snapshot, Transaction } from '../db/types'
 
 export interface AppData {
   ready: boolean
@@ -10,6 +10,7 @@ export interface AppData {
   budgets: Budget[]
   snapshots: Snapshot[]
   templates: ImportTemplate[]
+  goals: Goal[]
   settings: Settings
   categoryById: Map<string, Category>
   accountById: Map<string, Account>

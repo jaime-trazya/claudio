@@ -33,9 +33,9 @@ describe('detección de duplicados', () => {
     expect(plan.map((p) => p.status)).toEqual(['duplicado', 'nuevo'])
   })
 
-  it('no confunde cuentas distintas', () => {
-    const existing = [tx({ accountId: 'a2', date: '2026-10-01', amount: -2000, description: 'RECIBO LUZ', source: 'extracto' })]
-    expect(planImport([mv('2026-10-01', -2000, 'RECIBO LUZ')], 'a1', existing)[0].status).toBe('nuevo')
+  it('lo de otras cuentas se avisa pero no cuenta como pendiente de conciliar', () => {
+    const manualOther = [tx({ accountId: 'a2', date: '2026-10-01', amount: -2000, description: 'RECIBO LUZ', source: 'manual' })]
+    expect(planImport([mv('2026-10-01', -2000, 'RECIBO LUZ')], 'a1', manualOther)[0].status).toBe('nuevo')
   })
 
   it('extractos solapados no generan duplicados', () => {
@@ -110,5 +110,18 @@ describe('conciliación con pagos pendientes', () => {
     expect(byDesc('CAFETERIA')).toMatchObject({ status: 'dudoso' })
     // El pago de Glovo no está en el extracto: sigue pendiente
     expect(plan.some((r) => r.matchId === 'atajo5')).toBe(false)
+  })
+})
+
+describe('duplicados reforzados', () => {
+  it('mismo día, importe y saldo del banco aunque el concepto venga escrito distinto', () => {
+    const existing = [tx({ accountId: 'a1', date: '2026-10-01', amount: -2000, description: 'RECIBO LUZ', source: 'extracto', bankBalance: 50000 })]
+    const plan = planImport([{ date: '2026-10-01', amount: -2000, description: 'Recibo de la luz SA', balance: 50000, rowIndex: 0 }], 'a1', existing)
+    expect(plan[0].status).toBe('duplicado')
+  })
+  it('avisa si el movimiento ya está en otra cuenta y lo deja fuera', () => {
+    const existing = [tx({ accountId: 'otra', date: '2026-10-01', amount: -2000, description: 'RECIBO LUZ', source: 'extracto' })]
+    const plan = planImport([{ date: '2026-10-01', amount: -2000, description: 'RECIBO LUZ', rowIndex: 0 }], 'a1', existing)
+    expect(plan[0]).toMatchObject({ status: 'duplicado', include: false, elsewhere: 'otra' })
   })
 })

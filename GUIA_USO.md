@@ -124,6 +124,12 @@ Formatos comprobados:
 5. Si el extracto trae la columna de **saldo**, verás la casilla **Cuadrar el saldo de la cuenta con el del banco** (activada). La app usa el saldo que da el banco en cada movimiento, así que el saldo de la cuenta coincide siempre con el del banco, aunque el extracto no empiece el día que abriste la cuenta o el banco anote algunos movimientos con fecha valor.
 6. Pulsa **Guardar**.
 
+**Revolut (cuenta + Cuenta Remunerada):** el PDF trae las dos tablas. Pulsa **Importar las dos, cada una en su cuenta**: la principal va a «Revolut» y la de ahorro a «Revolut · Cuenta remunerada» (se crea sola). Los traspasos entre ambas se enlazan, así que las dos cuentas cuadran con Revolut, intereses incluidos.
+
+**Sin duplicados:** antes de guardar, la app comprueba cada movimiento contra lo que ya tienes. Se considera repetido si coincide en concepto, o en fecha, importe y saldo del banco aunque el concepto venga escrito distinto, o si ya está en otra cuenta. Si vuelves a pasar un archivo que ya importaste, te avisa. Los repetidos salen marcados y no se guardan.
+
+**Corregir saldo:** si el saldo de una cuenta no coincide con el de tu banco (por pagos que el extracto aún no incluye), abre la cuenta, escribe el saldo real y pulsa **Corregir**. Se añade un «Ajuste de saldo» que no cuenta como gasto ni ingreso.
+
 **Si un traspaso tuyo no se detecta** (por ejemplo, «To Ana Ejemplo» cuando te pasas dinero a ti mismo): abre el movimiento, elige **Traspaso** y acepta **Aplicar siempre**. A partir de ahí se reconocerá solo.
 
 **Consejo para no duplicar:** importa cada cuenta en su propia cuenta de la app (Caixa en «CaixaBank», Revolut en «Revolut», la cuenta corriente de Trade Republic en «Trade Republic efectivo»). Así un traspaso de Caixa a Revolut aparece como salida en una y entrada en otra, sin contar como gasto.
@@ -173,6 +179,11 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
   - La **tasa de ahorro** es lo que te queda de lo que ingresas. Si gastas más del doble de lo que entra se muestra como «< −100 %».
   - En **Análisis**, las gráficas siguen el periodo elegido: con «Año» ves de enero a diciembre de ese año; con «Mes» o «Trimestre», los 12 meses que acaban ahí.
   - **Inversión**: lo aportado son las aportaciones de tus extractos más lo que indiques en la cuenta («Aportado que no aparece en tus extractos»). Si falta información, la app te lo avisa en vez de mostrar una rentabilidad inventada.
+- **Gráficas en el móvil**: toca un mes en cualquier gráfica para ver su detalle debajo (ingresos, gastos, balance, ahorro) y **Ver movimientos**. En «Mes» y «Trimestre» puedes ver 6 o 12 meses.
+- **Detalle de categoría**: en Análisis toca una categoría y **Ver evolución y comercios**: gasto mes a mes, media mensual y dónde gastas.
+- **Próximos cargos**: Inicio muestra las suscripciones y recibos que toca pagar en los próximos días.
+- **Objetivos de ahorro** (Patrimonio → Objetivos): cuánto quieres juntar y para cuándo. Puedes enlazarlo a una cuenta (por ejemplo, la Cuenta Remunerada) y la app te dice cuánto apartar cada mes.
+- **Perfil personal**: en Ajustes → Reglas → **Importar reglas o perfil** puedes cargar un archivo con tus reglas, tu nombre y presupuestos sugeridos. Ese archivo es solo tuyo: no lo subas a GitHub.
 - **Color de la app** (Ajustes): elige el color principal (o uno a tu gusto con el último círculo). Se adapta solo al modo claro y oscuro.
 - **Primer día del mes** (Ajustes): si cobras a final de mes, puedes hacer que el mes contable empiece, por ejemplo, el día 25.
 

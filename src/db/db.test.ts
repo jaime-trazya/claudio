@@ -34,7 +34,7 @@ describe('base de datos', () => {
 
     const db = new FinanzasDB(name)
     await db.open()
-    expect(db.verno).toBe(2)
+    expect(db.verno).toBe(3)
     const t = await db.transactions.get('viejo')
     expect(t).toMatchObject({ description: 'Antiguo', tags: [], status: 'confirmado', source: 'manual', updatedAt: 5 })
     expect(await db.accounts.get('a1')).toMatchObject({ initialBalance: 1000 })
@@ -115,9 +115,50 @@ describe('exportar e importar reglas', () => {
     await db.open()
     await db.transactions.add({ id: 'r1', accountId: 'a', date: '2026-10-01', amount: -350, description: 'BAR EL INVENTADO', categoryId: 'cat-bares', kind: 'gasto', status: 'confirmado', source: 'extracto', tags: [], createdAt: 1, updatedAt: 1 })
     const res = await importRules({ type: 'claudio-reglas', version: 1, rules: [{ keyword: 'el inventado', categoryId: 'cat-restaurantes' }, { keyword: 'x', categoryId: 'no-existe' }] })
-    expect(res).toEqual({ added: 1, skipped: 1, changed: 1 })
+    expect(res).toEqual({ added: 1, skipped: 1, changed: 1, budgets: 0 })
     expect((await db.transactions.get('r1'))!.categoryId).toBe('cat-restaurantes')
     expect((await exportRules()).rules).toEqual([{ keyword: 'el inventado', categoryId: 'cat-restaurantes' }])
     await expect(importRules({ hola: 1 })).rejects.toThrow()
+  })
+})
+
+import path from 'node:path'
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
+import { extractPdfItems, itemsToLines } from '../import/pdfText'
+import { pdfToTables } from '../import/pdfTable'
+import { applyMapping, bankClosingBalance, detectColumns } from '../import/detect'
+import { planImport } from '../import/reconcile'
+import { applyStatementImport, mirrorTransfers } from './actions'
+import { accountBalance } from '../domain/stats'
+import { sample } from '../test/helpers'
+
+describe('importar las dos cuentas de un PDF', () => {
+  it('cuenta principal + cuenta remunerada cuadran y reimportar no duplica', async () => {
+    const { db } = await import('./db')
+    await db.open()
+    await db.accounts.bulkAdd([
+      { id: 'rev', name: 'Revolut', type: 'banco', bank: 'revolut', initialBalance: 0, color: '#000', order: 0, createdAt: 1 },
+      { id: 'sav', name: 'Revolut · Cuenta remunerada', type: 'banco', bank: 'revolut', initialBalance: 0, color: '#000', order: 1, createdAt: 1 },
+    ])
+    const fonts = path.resolve(__dirname, '../../node_modules/pdfjs-dist/standard_fonts/') + '/'
+    const tables = pdfToTables(itemsToLines(await extractPdfItems(sample('extracto-pdf-varias-tablas.pdf'), pdfjs as never, { standardFontDataUrl: fonts })))
+    const run = async () => {
+      for (const [i, acc] of ['rev', 'sav'].entries()) {
+        const movs = applyMapping(tables[i].rows, detectColumns(tables[i].rows)!.mapping)
+        const rows = planImport(movs, acc, await db.transactions.toArray())
+        await applyStatementImport({ rows, accountId: acc, fileName: 'x', bankBalance: bankClosingBalance(movs) })
+      }
+      return mirrorTransfers('rev', 'sav')
+    }
+    expect(await run()).toBe(2)
+    const all = await db.transactions.toArray()
+    const accs = await db.accounts.toArray()
+    expect(accountBalance(accs.find((a) => a.id === 'rev')!, all)).toBe(5407)
+    // 60 enviados − 20 devueltos + 3 céntimos de intereses
+    expect(accountBalance(accs.find((a) => a.id === 'sav')!, all)).toBe(4003)
+    const count = all.length
+    // Segunda vez con el mismo archivo: nada nuevo
+    expect(await run()).toBe(0)
+    expect(await db.transactions.count()).toBe(count)
   })
 })

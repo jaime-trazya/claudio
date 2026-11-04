@@ -13,7 +13,7 @@ interface CatSeed {
 }
 
 /** Súbelo al cambiar categorías o reglas predefinidas: se sincronizan al abrir la app */
-export const DEFAULTS_VERSION = 3
+export const DEFAULTS_VERSION = 4
 
 /**
  * Categorías predefinidas. Los colores son tonos de la paleta (pálido + tinta oscura del mismo tono);
@@ -170,7 +170,7 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['agencia tributaria', 'aeat', 'hacienda', 'ayuntamiento', 'ibi ', 'dgt', 'tasa ', 'impuesto', 'impuestos', 'generalitat', 'dni pasaporte', 'tasas'], 'cat-impuestos'],
   [['cajero', 'reintegro', 'reint cajero', 'cajero ajeno', 'retirada efectivo', 'retirada de efectivo', 'disposicion efectivo'], 'cat-efectivo'],
   [['devolucion', 'reembolso', 'abono compra'], 'cat-reembolsos', 'ingreso'],
-  [['intereses', 'interes neto', 'interes bruto', 'dividendo', 'dividend', 'remuneracion cuenta'], 'cat-intereses', 'ingreso'],
+  [['intereses', 'interes neto', 'interes bruto', 'interes neto pagado', 'interes neto pagado a cuenta remunerada', 'dividendo', 'dividend', 'remuneracion cuenta'], 'cat-intereses', 'ingreso'],
   [['academia', 'universidad', 'colegio', 'matricula', 'udemy', 'coursera', 'libreria', 'casa del libro'], 'cat-educacion'],
 ]
 

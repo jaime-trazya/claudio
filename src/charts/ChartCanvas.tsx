@@ -11,6 +11,8 @@ interface Props {
   emptyText?: string
   isEmpty?: boolean
   label: string
+  /** Al tocar la gráfica: índice del elemento más cercano (mes, punto…) */
+  onSelect?: (index: number) => void
 }
 
 function useThemeVersion() {
@@ -29,7 +31,7 @@ function useThemeVersion() {
   return v
 }
 
-export function ChartCanvas({ build, height = 200, emptyText, isEmpty, label }: Props) {
+export function ChartCanvas({ build, height = 200, emptyText, isEmpty, label, onSelect }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const chartRef = useRef<Chart | null>(null)
   const theme = useThemeVersion()
@@ -39,6 +41,14 @@ export function ChartCanvas({ build, height = 200, emptyText, isEmpty, label }: 
     applyDefaults()
     const config = build(themeColors())
     config.options = { responsive: true, maintainAspectRatio: false, ...config.options }
+    if (onSelect && !isEmpty) {
+      config.options.onClick = (evt, _els, chart) => {
+        const els = chart.getElementsAtEventForMode(evt as unknown as Event, 'index', { intersect: false }, true)
+        if (els[0]) onSelect(els[0].index)
+      }
+      // En el móvil el detalle va debajo de la gráfica: sin globos que tapen las barras
+      config.options.plugins = { ...config.options.plugins, tooltip: { ...config.options.plugins?.tooltip, enabled: false } }
+    }
     if (chartRef.current) {
       // Actualiza sin recrear para que la animación sea suave
       const chart = chartRef.current
@@ -51,7 +61,7 @@ export function ChartCanvas({ build, height = 200, emptyText, isEmpty, label }: 
       chart.destroy()
     }
     chartRef.current = new Chart(ref.current, config)
-  }, [build, theme])
+  }, [build, theme, onSelect, isEmpty])
 
   useEffect(
     () => () => {

@@ -33,7 +33,10 @@ export function applyDefaults() {
   Chart.defaults.font.size = 11
   Chart.defaults.color = c.muted
   Chart.defaults.borderColor = c.grid
-  Chart.defaults.animation = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : { duration: 350 }
+  // Se modifica la duración sin sustituir el objeto: si se reemplaza se pierde la curva (easing)
+  // y Chart.js falla al animar una actualización
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) Chart.defaults.animation = false
+  else if (Chart.defaults.animation) Chart.defaults.animation.duration = 350
   Chart.defaults.plugins.tooltip.backgroundColor = c.text
   Chart.defaults.plugins.tooltip.titleColor = c.surface
   Chart.defaults.plugins.tooltip.bodyColor = c.surface

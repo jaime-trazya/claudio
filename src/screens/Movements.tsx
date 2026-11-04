@@ -8,6 +8,7 @@ import { routeParams, navigate } from '../ui/router'
 import { categoryLabel, KIND_LABEL } from '../ui/format'
 import { accountingMonth, formatDay, monthLabel, todayISO } from '../lib/dates'
 import { normalize } from '../lib/text'
+import { accountBalance, isCountable, summarize } from '../domain/stats'
 import type { Transaction } from '../db/types'
 
 type FilterKey = 'mes' | 'cuenta' | 'cat' | 'tipo' | 'estado'
@@ -83,7 +84,13 @@ export function Movements({ route }: { route: string }) {
     return out
   })()
 
-  const net = list.reduce((s, t) => s + (t.kind === 'gasto' || t.kind === 'ingreso' ? t.amount : 0), 0)
+  // Resumen: sin cuenta elegida, ingresos y gastos reales (sin traspasos ni aportaciones);
+  // con cuenta elegida, el dinero que entra y sale de esa cuenta y su saldo actual
+  const summary = summarize(list, { start: '0000-01-01', end: '9999-12-31' }, categoryById)
+  const inflow = list.reduce((s, t) => s + (t.amount > 0 ? t.amount : 0), 0)
+  const outflow = list.reduce((s, t) => s + (t.amount < 0 ? -t.amount : 0), 0)
+  const filteredAccount = fCuenta ? accounts.find((a) => a.id === fCuenta) : undefined
+  const dayTotal = (items: Transaction[]) => items.reduce((s, t) => s + (fCuenta || isCountable(t) ? t.amount : 0), 0)
   const today = todayISO()
 
   const options: Record<FilterKey, { title: string; all: string; items: Option[] }> = {
@@ -136,15 +143,47 @@ export function Movements({ route }: { route: string }) {
           </button>
         )}
       </div>
-      <p className="small muted" style={{ padding: '0 2px' }}>
-        {list.length} movimiento{list.length === 1 ? '' : 's'}
-        {list.length > 0 && (
-          <>
-            {' · balance '}
-            <Money cents={net} sign />
-          </>
-        )}
-      </p>
+      {list.length > 0 && (
+        <section className="card flush" aria-label="Resumen">
+          <div className="kpis">
+            {filteredAccount ? (
+              <>
+                <div className="kpi">
+                  <div className="card-label">Saldo de {filteredAccount.name}</div>
+                  <Money cents={accountBalance(filteredAccount, transactions)} plain />
+                  <div className="meta">{list.length} movimientos</div>
+                </div>
+                <div className="kpi" style={{ borderRight: 0 }}>
+                  <div className="card-label">Entra / sale</div>
+                  <Money cents={inflow} sign className="small" />
+                  <div>
+                    <Money cents={-outflow} plain className="small" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="kpi">
+                  <div className="card-label">Ingresos</div>
+                  <Money cents={summary.income} sign />
+                </div>
+                <div className="kpi">
+                  <div className="card-label">Gastos</div>
+                  <Money cents={-summary.expenses} plain />
+                </div>
+                <div className="kpi" style={{ gridColumn: '1 / -1', borderRight: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <div className="card-label">Balance</div>
+                  <Money cents={summary.balance} sign />
+                </div>
+              </>
+            )}
+          </div>
+          <p className="meta" style={{ padding: '0 var(--pad) 10px' }}>
+            {list.length} movimiento{list.length === 1 ? '' : 's'}
+            {filteredAccount ? '' : ' · sin contar traspasos entre tus cuentas ni aportaciones'}
+          </p>
+        </section>
+      )}
 
       {groups.length === 0 && (
         <div className="card">
@@ -159,7 +198,7 @@ export function Movements({ route }: { route: string }) {
         <section key={g.date} aria-label={formatDay(g.date, today)}>
           <div className="day-head">
             <span>{formatDay(g.date, today)}</span>
-            <Money cents={g.total} plain className="small" />
+            <Money cents={dayTotal(g.items)} plain className="small" />
           </div>
           <div className="card flush list">
             {g.items.map((t) => (

@@ -10,6 +10,9 @@ import { ACCEPT_STATEMENT, pickFile } from '../ui/files'
 import type { Row } from '../import/readSheet'
 import type { PdfTable } from '../import/pdfTable'
 import { detectBank } from '../domain/banks'
+import { MultiImport } from './MultiImport'
+import { fileFingerprint } from '../lib/text'
+import { db } from '../db/db'
 import { applyMapping, bankClosingBalance, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
 import { categorize, effectiveRules } from '../domain/categorize'
@@ -44,7 +47,11 @@ export function ImportStatement({ route }: { route: string }) {
   const [picking, setPicking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [tables, setTables] = useState<PdfTable[] | null>(null)
+  const [multiOpen, setMultiOpen] = useState(false)
   const [adjust, setAdjust] = useState(true)
+  const [fingerprint, setFingerprint] = useState('')
+  const [seenBefore, setSeenBefore] = useState<string | null>(null)
+  const [bankName, setBankName] = useState<string | null>(null)
   const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
   const [limit, setLimit] = useState(200)
   const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
@@ -65,6 +72,10 @@ export function ImportStatement({ route }: { route: string }) {
     setFileName(file.name)
     try {
       const buf = await file.arrayBuffer()
+      const fp = fileFingerprint(new Uint8Array(buf))
+      setFingerprint(fp)
+      const prevImport = (await db.imports.toArray()).find((i) => i.fingerprint === fp)
+      setSeenBefore(prevImport ? new Date(prevImport.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) : null)
       const isPdf = file.name.toLowerCase().endsWith('.pdf') || new Uint8Array(buf.slice(0, 4)).every((b, i) => b === [0x25, 0x50, 0x44, 0x46][i])
       if (isPdf) {
         const { readPdfLinesInBrowser } = await import('../import/pdfText')
@@ -109,6 +120,7 @@ export function ImportStatement({ route }: { route: string }) {
   /** Si el extracto es de un banco que tienes como cuenta, se importa en esa cuenta */
   function pickAccountFor(text: string, header: string): string {
     const bank = detectBank(text, header)
+    setBankName(bank?.name ?? null)
     if (!bank) return accountId
     const match = usable.find((a) => a.bank === bank.id) ?? usable.find((a) => a.name.toLowerCase().includes(bank.name.toLowerCase()))
     if (match && match.id !== accountId) {
@@ -155,7 +167,7 @@ export function ImportStatement({ route }: { route: string }) {
   async function save() {
     setBusy(true)
     try {
-      const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null })
+      const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null, fingerprint })
       await setSetting('defaultAccountId', accountId)
       toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}${res.adjusted ? ' · saldo cuadrado con el banco' : ''}`)
       navigate(`/movimientos?cuenta=${accountId}`, true)
@@ -210,6 +222,10 @@ export function ImportStatement({ route }: { route: string }) {
           {tables && (
             <div className="stack" style={{ gap: 8 }}>
               <span className="field-label">Este PDF tiene varias tablas. ¿Cuál quieres importar en «{usable.find((a) => a.id === accountId)?.name}»?</span>
+              <button className="btn primary block" onClick={() => setMultiOpen(true)}>
+                Importar {tables.length === 2 ? 'las dos' : `las ${tables.length}`}, cada una en su cuenta
+              </button>
+              <span className="field-label">O solo una:</span>
               <div className="card flush list">
                 {tables.map((t, i) => (
                   <button key={i} className="list-item" onClick={() => loadRows(t.rows, accountId)}>
@@ -291,6 +307,16 @@ export function ImportStatement({ route }: { route: string }) {
           <button className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setStep('columnas')}>
             <Settings2 size={15} /> Ajustar columnas
           </button>
+          {seenBefore && (
+            <Notice tone="warn" icon={<TriangleAlert size={20} />} title={`Ya importaste este archivo el ${seenBefore}`}>
+              No pasa nada: los movimientos que ya tienes salen como duplicados y no se guardarán otra vez.
+            </Notice>
+          )}
+          {plan.some((r) => r.elsewhere) && (
+            <Notice tone="warn" icon={<TriangleAlert size={20} />} title="Algunos movimientos ya están en otra cuenta">
+              {plan.filter((r) => r.elsewhere).length} movimientos coinciden con otros guardados en «{accounts.find((a) => a.id === plan.find((r) => r.elsewhere)!.elsewhere)?.name}». Se han dejado fuera; márcalos si de verdad son de esta cuenta.
+            </Notice>
+          )}
           {summary.dudosos > 0 && (
             <Notice tone="warn" icon={<TriangleAlert size={20} />} title="Hay movimientos con varias coincidencias">
               Tienen el mismo importe que varios pagos pendientes. Elige con cuál se corresponde o créalo como nuevo.
@@ -320,7 +346,7 @@ export function ImportStatement({ route }: { route: string }) {
                       </div>
                       <div className="row" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                         <span className="meta">{formatShortDate(r.movement.date)}</span>
-                        <span className={`pill ${pill.cls}`}>{r.status === 'dudoso' && r.matchId ? 'Duda: revisa' : pill.label}</span>
+                        <span className={`pill ${pill.cls}`}>{r.elsewhere ? `Ya está en ${accounts.find((a) => a.id === r.elsewhere)?.name ?? 'otra cuenta'}` : r.status === 'dudoso' && r.matchId ? 'Duda: revisa' : pill.label}</span>
                         {auto.kind === 'aportacion' && <span className="pill accent">Aportación</span>}
                         <button className="row small" style={{ gap: 6, minHeight: 32 }} onClick={() => setPicking(i)}>
                           <CategoryTile category={cat} size="sm" />
@@ -379,6 +405,17 @@ export function ImportStatement({ route }: { route: string }) {
         </>
       )}
 
+      {multiOpen && tables && (
+        <MultiImport
+          tables={tables}
+          primaryAccountId={accountId}
+          bankName={bankName}
+          fileName={fileName}
+          fingerprint={fingerprint}
+          onClose={() => setMultiOpen(false)}
+          onDone={(first) => navigate(`/movimientos?cuenta=${first}`, true)}
+        />
+      )}
       {picking !== null && (
         <CategoryPicker
           value={picking in overrides ? overrides[picking] : null}

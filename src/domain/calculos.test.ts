@@ -142,3 +142,26 @@ describe('saldo con el orden del banco', () => {
     expect(accountBalance(acc, all)).toBe(14441) // + pago pendiente del Atajo
   })
 })
+
+import { goalProgress } from './goals'
+
+describe('objetivos de ahorro', () => {
+  const goal = { id: 'g', name: 'Viaje', target: 120000, saved: 30000, color: '#000', createdAt: 0 }
+  it('progreso a mano y cuota mensual hasta la fecha', () => {
+    const p = goalProgress({ ...goal, deadline: '2027-05-04' }, [], [], [], '2026-11-04')
+    expect(p).toMatchObject({ saved: 30000, remaining: 90000, monthsLeft: 6, monthly: 15000, done: false })
+    expect(p.ratio).toBeCloseTo(0.25)
+  })
+  it('enlazado a una cuenta usa su saldo', () => {
+    const acc = account({ id: 'ah', initialBalance: 150000 })
+    expect(goalProgress({ ...goal, accountId: 'ah' }, [acc], [], [], '2026-11-04')).toMatchObject({ saved: 150000, remaining: 0, done: true, ratio: 1 })
+  })
+})
+
+describe('cuenta remunerada', () => {
+  it('los intereses son ingreso aunque mencionen la cuenta remunerada', () => {
+    const rules = defaultRules(0)
+    expect(categorize('Interés neto pagado a Cuenta Remunerada del 1 mar 2026', 1, rules)).toMatchObject({ kind: 'ingreso', categoryId: 'cat-intereses' })
+    expect(categorize('To Cuenta Remunerada', -2000, rules).kind).toBe('transferencia')
+  })
+})

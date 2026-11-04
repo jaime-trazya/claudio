@@ -5,7 +5,8 @@ import { useEditor } from '../ui/editor'
 import { useToast } from '../ui/toast'
 import { BackBar, Money, Segmented, Sheet, Switch } from '../ui/components'
 import { db } from '../db/db'
-import { deleteAccount } from '../db/actions'
+import { correctBalance, deleteAccount } from '../db/actions'
+import { todayISO } from '../lib/dates'
 import { accountBalance } from '../domain/stats'
 import { formatMoney, parseAmount } from '../lib/money'
 import { uid } from '../lib/text'
@@ -124,6 +125,7 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
   const [archived, setArchived] = useState(!!existing?.archived)
   const [cashAccountId, setCashAccountId] = useState(existing?.cashAccountId ?? '')
   const [bank, setBank] = useState(existing?.bank ?? '')
+  const [realBalance, setRealBalance] = useState('')
   const initialCents = initial.trim() ? parseAmount(initial) : 0
   const valid = name.trim().length > 0 && initialCents !== null
   const count = existing ? transactions.filter((t) => t.accountId === existing.id).length : 0
@@ -218,9 +220,30 @@ export function AccountEditor({ id, onClose }: { id?: string; onClose: () => voi
         </span>
       </label>
       {existing && type !== 'inversion' && (
-        <p className="small muted">
-          Saldo actual: <strong>{formatMoney(accountBalance({ ...existing, initialBalance: initialCents ?? 0 }, transactions), { currency: settings.currency })}</strong>
-        </p>
+        <div className="card stack" style={{ gap: 8 }}>
+          <div className="row between">
+            <span className="small muted">Saldo en la app</span>
+            <strong className="money">{formatMoney(accountBalance(existing, transactions), { currency: settings.currency })}</strong>
+          </div>
+          <label className="field">
+            <span>¿No coincide con tu banco? Escribe el saldo real</span>
+            <div className="row" style={{ gap: 8 }}>
+              <input className="input" inputMode="decimal" placeholder="Saldo real hoy" value={realBalance} onChange={(e) => setRealBalance(e.target.value)} />
+              <button
+                className="btn small"
+                disabled={parseAmount(realBalance) === null}
+                onClick={async () => {
+                  const diff = await correctBalance(existing, accountBalance(existing, transactions), parseAmount(realBalance)!, todayISO())
+                  setRealBalance('')
+                  toast.show(diff ? `Saldo corregido (${formatMoney(diff, { currency: settings.currency, sign: true })})` : 'El saldo ya coincidía')
+                }}
+              >
+                Corregir
+              </button>
+            </div>
+            <span className="meta">Se añade un «Ajuste de saldo» que no cuenta como gasto ni ingreso. Útil si hay pagos que el extracto aún no incluye.</span>
+          </label>
+        </div>
       )}
       {(type === 'tarjeta' || type === 'banco') && (
         <label className="field">
