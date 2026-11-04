@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, Baby, Banknote, Bike, BookOpen, Briefcase, Building, Car, CircleParking, Coffee, CreditCard, Droplet,
+  ArrowLeftRight, Baby, Beer, Cigarette, Dices, HandCoins, Banknote, Bike, BookOpen, Briefcase, Building, Car, CircleParking, Coffee, CreditCard, Droplet,
   Dumbbell, Ellipsis, Film, Flame, Fuel, Gamepad2, Gift, Globe, GraduationCap, Hammer, HeartPulse, House, Key, Landmark,
   Laptop, Music, Package, PawPrint, Percent, PiggyBank, Pill, Plane, Plus, Receipt, Repeat, Scissors, Shield, Shirt,
   ShoppingBag, ShoppingBasket, Smartphone, Sofa, Star, Stethoscope, Sun, Tag, Ticket, TrainFront, TreePine, TrendingUp,
@@ -17,6 +17,7 @@ const ICONS: Record<string, LucideIcon> = {
   arrows: ArrowLeftRight, gift: Gift, paw: PawPrint, baby: Baby, music: Music, gamepad: Gamepad2, scissors: Scissors,
   graduation: GraduationCap, piggy: PiggyBank, wallet: Wallet, card: CreditCard, tag: Tag, star: Star, globe: Globe,
   umbrella: Umbrella, sun: Sun, tree: TreePine, hammer: Hammer,
+  beer: Beer, cigarette: Cigarette, dice: Dices, handcoins: HandCoins,
 }
 
 export function CategoryIcon({ name, size = 20 }: { name: string; size?: number }) {

@@ -1,12 +1,12 @@
 import { db } from './db'
 import type { Account, ImportTemplate, Rule, Snapshot, Transaction, TxKind } from './types'
-import { categorize, ruleMatches, sortRules } from '../domain/categorize'
+import { categorize, effectiveRules, ruleMatches } from '../domain/categorize'
 import { dupKey, type PlanRow } from '../import/reconcile'
 import type { ShortcutPayment } from '../import/shortcut'
 import { accountForCard } from '../import/shortcut'
 import type { TRStatement } from '../import/tradeRepublic'
 import { normalize, uid } from '../lib/text'
-import { setSetting } from './settings'
+import { getSettings, setSetting } from './settings'
 import { todayISO } from '../lib/dates'
 import { reseed } from './db'
 
@@ -80,7 +80,7 @@ export async function applyRuleEverywhere(keyword: string, categoryId: string, k
 
 /** Vuelve a aplicar todas las reglas a los movimientos sin categoría */
 export async function recategorizeUncategorized(): Promise<number> {
-  const rules = sortRules(await db.rules.toArray())
+  const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   let changed = 0
   await db.transactions
     .filter((t) => !t.categoryId && !t.transferId && !t.splits?.length)
@@ -105,7 +105,7 @@ export interface StatementImportInput {
 
 /** Guarda el extracto según la vista previa: crea los nuevos y concilia los emparejados */
 export async function applyStatementImport({ rows, accountId, fileName, categoryOverrides = {} }: StatementImportInput) {
-  const rules = sortRules(await db.rules.toArray())
+  const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const importId = uid()
   let added = 0
   let reconciled = 0
@@ -165,7 +165,7 @@ export async function applyStatementImport({ rows, accountId, fileName, category
 
 /** Importa los pagos nuevos del Atajo como pendientes de confirmar */
 export async function importShortcutPayments(payments: ShortcutPayment[], accounts: Account[], fallbackAccountId: string | null, fileName: string) {
-  const rules = sortRules(await db.rules.toArray())
+  const rules = effectiveRules(await db.rules.toArray(), (await getSettings()).ownerName)
   const known = new Set((await db.transactions.where('source').equals('atajo').toArray()).map((t) => t.externalId).filter(Boolean) as string[])
   const fresh = payments.filter((p) => !known.has(p.externalId))
   const usable = accounts.filter((a) => a.type !== 'inversion' && !a.archived)
@@ -262,4 +262,41 @@ export async function wipeAll() {
     for (const t of db.tables) await t.clear()
   })
   await reseed()
+}
+
+export const RULES_FILE_TYPE = 'claudio-reglas'
+
+export interface RulesFile {
+  type: typeof RULES_FILE_TYPE
+  version: 1
+  rules: { keyword: string; categoryId: string; kind?: TxKind }[]
+}
+
+/** Exporta tus reglas (las creadas por ti) para guardarlas o pasarlas a otro dispositivo */
+export async function exportRules(): Promise<RulesFile> {
+  const rules = await db.rules.filter((r) => r.custom).toArray()
+  return { type: RULES_FILE_TYPE, version: 1, rules: rules.map((r) => ({ keyword: r.keyword, categoryId: r.categoryId, ...(r.kind ? { kind: r.kind } : {}) })) }
+}
+
+/**
+ * Importa reglas de un archivo: las añade como tuyas y recategoriza los movimientos que encajan.
+ * Se saltan las que apuntan a categorías que no existen.
+ */
+export async function importRules(data: unknown): Promise<{ added: number; skipped: number; changed: number }> {
+  const file = data as Partial<RulesFile>
+  if (!file || file.type !== RULES_FILE_TYPE || !Array.isArray(file.rules)) throw new Error('El archivo no es un archivo de reglas de esta app.')
+  const cats = new Set(await db.categories.toCollection().primaryKeys())
+  let added = 0
+  let skipped = 0
+  let changed = 0
+  for (const r of file.rules) {
+    if (!r || typeof r.keyword !== 'string' || typeof r.categoryId !== 'string' || !cats.has(r.categoryId)) {
+      skipped++
+      continue
+    }
+    const kind = r.kind === 'aportacion' || r.kind === 'transferencia' || r.kind === 'ingreso' || r.kind === 'gasto' ? r.kind : undefined
+    changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined)
+    added++
+  }
+  return { added, skipped, changed }
 }

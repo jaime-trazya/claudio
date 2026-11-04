@@ -5,7 +5,9 @@ import { useToast } from '../ui/toast'
 import { BackBar, CategoryPicker, CategoryTile, Sheet, Switch } from '../ui/components'
 import { categoryLabel } from '../ui/format'
 import { db } from '../db/db'
-import { applyRuleEverywhere, recategorizeUncategorized } from '../db/actions'
+import { applyRuleEverywhere, exportRules, importRules, recategorizeUncategorized } from '../db/actions'
+import { ACCEPT_JSON, pickFile, saveFile } from '../ui/files'
+import { todayISO } from '../lib/dates'
 import { normalize } from '../lib/text'
 import { ruleMatches } from '../domain/categorize'
 import type { Rule } from '../db/types'
@@ -62,6 +64,33 @@ export function RulesScreen() {
           Aplicar reglas a los {uncategorized} movimientos sin categoría
         </button>
       )}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button
+          className="btn small"
+          onClick={async () => {
+            const file = await pickFile(ACCEPT_JSON)
+            if (!file) return
+            try {
+              const res = await importRules(JSON.parse(await file.text()))
+              toast.show(`${res.added} reglas importadas · ${res.changed} movimientos recategorizados${res.skipped ? ` · ${res.skipped} omitidas` : ''}`)
+            } catch (e) {
+              toast.show((e as Error).message || 'No se ha podido leer el archivo')
+            }
+          }}
+        >
+          Importar reglas
+        </button>
+        <button
+          className="btn small"
+          disabled={!custom.length}
+          onClick={async () => {
+            const ok = await saveFile(JSON.stringify(await exportRules(), null, 1), `reglas-claudio-${todayISO()}.json`, 'application/json')
+            if (ok) toast.show('Reglas exportadas')
+          }}
+        >
+          Exportar mis reglas
+        </button>
+      </div>
       <div className="search">
         <Search size={18} />
         <input className="input" type="search" placeholder="Buscar palabra o categoría" value={q} onChange={(e) => setQ(e.target.value)} />

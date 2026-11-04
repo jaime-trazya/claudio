@@ -59,3 +59,19 @@ export function categorize(description: string, amount: number, rules: Rule[], p
  * el comercio limpio del concepto (sin "compra tarjeta", números, etc.).
  */
 export { merchantKey as suggestKeyword } from '../lib/text'
+
+/**
+ * Reglas virtuales a partir de tu nombre: "To Ana Ejemplo", "Outgoing transfer for Ana Ejemplo Prueba"
+ * o "Ana Ejemplo Prueba" son traspasos a ti mismo. Usa nombre + primer apellido y el nombre completo.
+ */
+export function ownerRules(ownerName: string): Rule[] {
+  const words = normalize(ownerName).split(' ').filter((w) => w.length > 1)
+  if (words.length < 2) return []
+  const keys = [...new Set([words.slice(0, 2).join(' '), words.join(' ')])]
+  return keys.map((keyword) => ({ id: `owner-${keyword}`, keyword, categoryId: 'cat-transferencia', kind: 'transferencia' as const, custom: true, createdAt: 0 }))
+}
+
+/** Reglas guardadas + las de tu nombre, ya ordenadas por prioridad */
+export function effectiveRules(rules: Rule[], ownerName = ''): Rule[] {
+  return sortRules([...ownerRules(ownerName), ...rules])
+}

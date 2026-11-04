@@ -73,6 +73,17 @@ export function SettingsScreen() {
           </select>
           <span className="meta">Si cobras a final de mes, empieza el mes el día que cobras (por ejemplo, el 25).</span>
         </label>
+        <label className="field">
+          <span>Tu nombre (opcional)</span>
+          <input
+            className="input"
+            defaultValue={settings.ownerName}
+            placeholder="Nombre y apellidos"
+            autoComplete="name"
+            onBlur={(e) => e.target.value.trim() !== settings.ownerName && set('ownerName', e.target.value.trim())}
+          />
+          <span className="meta">Se guarda solo en este dispositivo. Sirve para reconocer como traspaso los envíos a ti mismo («To …», «Transferencia a …»).</span>
+        </label>
         <div className="field">
           <span className="field-label">Apariencia</span>
           <Segmented

@@ -152,6 +152,9 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 
 - **Categorías** (Ajustes → Categorías): hay categorías y subcategorías predefinidas con icono y color. Puedes cambiar nombre, icono y color, crear nuevas o borrarlas.
 - **Reglas** (Ajustes → Reglas): si el concepto contiene una palabra clave (por ejemplo «mercadona»), el movimiento recibe una categoría. Hay muchas predefinidas (Mercadona, Lidl, Carrefour → Supermercado; Repsol, Cepsa → Gasolina; Netflix, Spotify → Suscripciones; Nómina → Sueldo; Bizum → Bizum…). Tus reglas tienen prioridad.
+- Categorías pensadas para el día a día en España: **Supermercado** (Mercadona, Consum, Hiperber, Dia, Charter…), **Bares y copas**, **Restaurantes**, **Cafeterías** (incluidas máquinas de vending), **Tabaco y estancos**, **Gasolina** (también «Área de servicio»), **Apuestas y loterías**, **Videojuegos** (Steam, Keydrop…), **Seguridad Social y autónomos** (TGSS), **Transferencias recibidas**, **Traspaso entre cuentas**, etc. Si actualizas la app, las categorías nuevas se añaden solas sin tocar las tuyas.
+- **Tu nombre** (Ajustes): escríbelo y los envíos a ti mismo («To Nombre Apellido», «Outgoing transfer for…») se marcarán como traspaso. Solo se guarda en tu iPhone.
+- **Importar / exportar reglas** (Ajustes → Reglas): guarda tus reglas en un archivo o carga un archivo de reglas (por ejemplo, el que te preparen con los bares y tiendas de tu zona). Al importarlas se recategorizan los movimientos que ya tenías.
 - **Aplicar siempre**: al cambiar la categoría de un movimiento, la app te pregunta si quieres aplicarla siempre a ese concepto. Si dices que sí, crea la regla y recategoriza los movimientos anteriores iguales.
 - **Dividir**: en un movimiento, pulsa **Dividir en varias categorías** (por ejemplo, una compra con parte de supermercado y parte de hogar).
 - **Notas y etiquetas**: en cada movimiento. El buscador de Movimientos también busca en ellas.

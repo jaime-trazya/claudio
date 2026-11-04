@@ -11,7 +11,7 @@ import type { Row } from '../import/readSheet'
 import type { PdfTable } from '../import/pdfTable'
 import { applyMapping, detectColumns, headerSignature, type ParsedMovement } from '../import/detect'
 import { planImport, summarizePlan, type PlanRow } from '../import/reconcile'
-import { categorize, sortRules } from '../domain/categorize'
+import { categorize, effectiveRules } from '../domain/categorize'
 import { applyStatementImport, saveTemplate } from '../db/actions'
 import { setSetting } from '../db/settings'
 import { formatShortDate } from '../lib/dates'
@@ -43,7 +43,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [picking, setPicking] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [tables, setTables] = useState<PdfTable[] | null>(null)
-  const sorted = useMemo(() => sortRules(rules), [rules])
+  const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
   const [limit, setLimit] = useState(200)
   const autos = useMemo(() => plan.map((r) => categorize(r.movement.description, r.movement.amount, sorted, true)), [plan, sorted])
   const txById = useMemo(() => new Map(transactions.map((t) => [t.id, t])), [transactions])

@@ -163,6 +163,10 @@ export interface Settings {
   theme: 'sistema' | 'claro' | 'oscuro'
   dismissedRecurring: string[]
   defaultAccountId: string | null
+  /** Tu nombre, para reconocer como traspaso los envíos a ti mismo ("To Ana Ejemplo") */
+  ownerName: string
+  /** Versión de las categorías y reglas predefinidas ya aplicada */
+  defaultsVersion: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -175,4 +179,6 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'sistema',
   dismissedRecurring: [],
   defaultAccountId: null,
+  ownerName: '',
+  defaultsVersion: 1,
 }

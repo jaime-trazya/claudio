@@ -74,3 +74,50 @@ describe('base de datos', () => {
     expect(backupOverdue(now - 31 * 86400000, true, now)).toBe(true)
   })
 })
+
+import { syncDefaults } from './db'
+import { exportRules, importRules } from './actions'
+import { DEFAULTS_VERSION } from '../domain/defaults'
+import { categorize, effectiveRules, ownerRules } from '../domain/categorize'
+
+describe('predefinidos y reglas', () => {
+  it('al actualizar añade categorías nuevas y renueva las reglas predefinidas sin tocar las tuyas', async () => {
+    const db = new FinanzasDB('test-sync')
+    await db.open()
+    // Simula una instalación antigua: sin categoría de tabaco, versión 1 y una regla propia
+    await db.categories.delete('cat-tabaco')
+    await db.rules.filter((r) => r.categoryId === 'cat-tabaco').delete()
+    await db.rules.add({ id: 'mia', keyword: 'bar pepe', categoryId: 'cat-restaurantes', custom: true, createdAt: 1 })
+    await db.categories.update('cat-ocio', { name: 'Diversión' })
+    await db.settings.put({ key: 'defaultsVersion', value: 1 })
+    expect(await syncDefaults(db)).toBe(true)
+    expect(await db.categories.get('cat-tabaco')).toBeDefined()
+    expect((await db.categories.get('cat-ocio'))!.name).toBe('Diversión')
+    expect(await db.rules.get('mia')).toBeDefined()
+    expect(await db.rules.where('keyword').equals('estanco').count()).toBe(1)
+    expect((await db.settings.get('defaultsVersion'))!.value).toBe(DEFAULTS_VERSION)
+    expect(await syncDefaults(db)).toBe(false)
+    db.close()
+  })
+
+  it('tu nombre convierte en traspaso los envíos a ti mismo', () => {
+    expect(ownerRules('Ana')).toEqual([])
+    const rules = effectiveRules([], 'Ana Ejemplo Prueba')
+    expect(categorize('To Ana Ejemplo', -5000, rules).kind).toBe('transferencia')
+    expect(categorize('Outgoing transfer for Ana Ejemplo Prueba', -5690, rules).kind).toBe('transferencia')
+    expect(categorize('To Luis Otro', -5000, rules).kind).toBe('gasto')
+  })
+})
+
+describe('exportar e importar reglas', () => {
+  it('importa reglas, salta las de categorías inexistentes y recategoriza', async () => {
+    const { db } = await import('./db')
+    await db.open()
+    await db.transactions.add({ id: 'r1', accountId: 'a', date: '2026-10-01', amount: -350, description: 'BAR EL INVENTADO', categoryId: 'cat-bares', kind: 'gasto', status: 'confirmado', source: 'extracto', tags: [], createdAt: 1, updatedAt: 1 })
+    const res = await importRules({ type: 'claudio-reglas', version: 1, rules: [{ keyword: 'el inventado', categoryId: 'cat-restaurantes' }, { keyword: 'x', categoryId: 'no-existe' }] })
+    expect(res).toEqual({ added: 1, skipped: 1, changed: 1 })
+    expect((await db.transactions.get('r1'))!.categoryId).toBe('cat-restaurantes')
+    expect((await exportRules()).rules).toEqual([{ keyword: 'el inventado', categoryId: 'cat-restaurantes' }])
+    await expect(importRules({ hola: 1 })).rejects.toThrow()
+  })
+})

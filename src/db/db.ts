@@ -1,6 +1,6 @@
 import Dexie, { type Table, type Transaction as DexieTx } from 'dexie'
 import type { Account, Budget, Category, ImportLog, ImportTemplate, Rule, Setting, Snapshot, Transaction } from './types'
-import { defaultCategories, defaultRules } from '../domain/defaults'
+import { DEFAULTS_VERSION, defaultCategories, defaultCategoriesWithVersion, defaultRules } from '../domain/defaults'
 
 export const DB_NAME = 'claudio-finanzas'
 
@@ -64,6 +64,32 @@ export class FinanzasDB extends Dexie {
 async function seed(tx: DexieTx) {
   await tx.table('categories').bulkAdd(defaultCategories())
   await tx.table('rules').bulkAdd(defaultRules())
+  await tx.table('settings').put({ key: 'defaultsVersion', value: DEFAULTS_VERSION })
+}
+
+/**
+ * Al actualizar la app: añade las categorías predefinidas nuevas y renueva las reglas predefinidas.
+ * No toca tus categorías, tus reglas (las tuyas tienen custom = true) ni tus movimientos.
+ */
+export async function syncDefaults(database: FinanzasDB = db): Promise<boolean> {
+  const row = await database.settings.get('defaultsVersion')
+  const current = typeof row?.value === 'number' ? row.value : 1
+  if (current >= DEFAULTS_VERSION) return false
+  await database.transaction('rw', database.categories, database.rules, database.settings, async () => {
+    const existing = new Set(await database.categories.toCollection().primaryKeys())
+    const fresh = defaultCategoriesWithVersion()
+      .filter((c) => c.since > current && !existing.has(c.id))
+      .map(({ since: _since, ...c }) => c)
+    // Las subcategorías nuevas solo si su categoría principal sigue existiendo
+    const ids = new Set([...existing, ...fresh.map((c) => c.id)])
+    await database.categories.bulkAdd(fresh.filter((c) => !c.parentId || ids.has(c.parentId)))
+    const catIds = new Set(await database.categories.toCollection().primaryKeys())
+    const customKeywords = new Set((await database.rules.filter((r) => r.custom).toArray()).map((r) => r.keyword))
+    await database.rules.filter((r) => !r.custom).delete()
+    await database.rules.bulkPut(defaultRules().filter((r) => catIds.has(r.categoryId) && !customKeywords.has(r.keyword)))
+    await database.settings.put({ key: 'defaultsVersion', value: DEFAULTS_VERSION })
+  })
+  return true
 }
 
 export const db = new FinanzasDB()
@@ -81,9 +107,10 @@ export async function requestPersistence(): Promise<boolean> {
 
 /** Vuelve a crear categorías y reglas predefinidas (tras borrar todo) */
 export async function reseed(database: FinanzasDB = db) {
-  await database.transaction('rw', database.categories, database.rules, async () => {
+  await database.transaction('rw', database.categories, database.rules, database.settings, async () => {
     await database.categories.bulkPut(defaultCategories())
     await database.rules.bulkPut(defaultRules())
+    await database.settings.put({ key: 'defaultsVersion', value: DEFAULTS_VERSION })
   })
 }
 
