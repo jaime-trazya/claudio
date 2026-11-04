@@ -10,13 +10,13 @@ import { useShortcutImport } from '../ui/useShortcutImport'
 import { isIOS, isStandalone } from '../ui/files'
 import { accountingMonth, daysBetween, formatShortDate, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
 import { formatMoney, formatRate } from '../lib/money'
-import { accountBalance, comparableRange, summarize } from '../domain/stats'
+import { comparableRange, summarize } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
 import { confirmTransactions } from '../db/actions'
 import { useBackupExport } from '../ui/useBackup'
-import { BankBadge } from '../ui/BankBadge'
 import { QuickSetup } from './Accounts'
+import { AccountList } from '../ui/AccountList'
 import { useState } from 'react'
 import { useTRImport } from '../ui/useTRImport'
 
@@ -337,19 +337,7 @@ export function Home() {
           Patrimonio
         </a>
       </div>
-      <section className="card flush">
-        <div className="list">
-          {accounts
-            .filter((a) => !a.archived && a.type !== 'inversion')
-            .map((a) => (
-              <button key={a.id} className="list-item" onClick={() => navigate(`/movimientos?cuenta=${a.id}`)}>
-                <BankBadge account={a} size={34} />
-                <span className="grow primary-line ellipsis">{a.name}</span>
-                <Money cents={accountBalance(a, transactions)} plain />
-              </button>
-            ))}
-        </div>
-      </section>
+      <AccountList accounts={accounts.filter((a) => !a.archived && a.type !== 'inversion')} compact />
       {shortcut.element}
       {tr.element}
     </main>

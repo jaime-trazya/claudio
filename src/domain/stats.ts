@@ -280,3 +280,28 @@ export function categoryMonthly(txs: Transaction[], categoryId: string | null, m
     return { key: m.key, amount: Math.max(0, amount) }
   })
 }
+
+/** Fecha del último saldo del banco que se está usando para la cuenta (null si no viene de extracto) */
+export function lastStatementDate(account: Account, txs: Transaction[]): ISODate | null {
+  let d: ISODate | null = null
+  for (const tx of txs) {
+    if (tx.accountId !== account.id || tx.source !== 'extracto') continue
+    const day = tx.bankEffDate ?? tx.bankDate ?? tx.date
+    if (!d || day > d) d = day
+  }
+  return d
+}
+
+/**
+ * Agrupa las cuentas por banco cuando un banco tiene varias (Revolut: cuenta principal + remunerada),
+ * para mostrar el total del banco y cada cuenta debajo.
+ */
+export function groupByBank<T extends { bank?: string }>(accounts: T[]): { bank: string | null; accounts: T[] }[] {
+  const out: { bank: string | null; accounts: T[] }[] = []
+  for (const a of accounts) {
+    const g = a.bank ? out.find((x) => x.bank === a.bank) : undefined
+    if (g) g.accounts.push(a)
+    else out.push({ bank: a.bank ?? null, accounts: [a] })
+  }
+  return out
+}

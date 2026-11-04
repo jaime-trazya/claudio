@@ -126,6 +126,8 @@ Formatos comprobados:
 
 **Revolut (cuenta + Cuenta Remunerada):** el PDF trae las dos tablas. Pulsa **Importar las dos, cada una en su cuenta**: la principal va a «Revolut» y la de ahorro a «Revolut · Cuenta remunerada» (se crea sola). Los traspasos entre ambas se enlazan, así que las dos cuentas cuadran con Revolut, intereses incluidos.
 
+Las cuentas de un mismo banco salen juntas con el **total del banco** (por ejemplo, Revolut = cuenta principal + Cuenta Remunerada) y, debajo de cada una, la fecha del extracto del que sale su saldo. Ojo: en el extracto de Revolut, «Cuenta personal (EUR)» y «Ahorros (EUR)» son dos cuentas distintas, cada una con su «Saldo de cierre».
+
 **Sin duplicados:** antes de guardar, la app comprueba cada movimiento contra lo que ya tienes. Se considera repetido si coincide en concepto, o en fecha, importe y saldo del banco aunque el concepto venga escrito distinto, o si ya está en otra cuenta. Si vuelves a pasar un archivo que ya importaste, te avisa. Los repetidos salen marcados y no se guardan.
 
 **Corregir saldo:** si el saldo de una cuenta no coincide con el de tu banco (por pagos que el extracto aún no incluye), abre la cuenta, escribe el saldo real y pulsa **Corregir**. Se añade un «Ajuste de saldo» que no cuenta como gasto ni ingreso.

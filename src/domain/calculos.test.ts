@@ -168,3 +168,19 @@ describe('cuenta remunerada', () => {
     expect(categorize('To Cuenta Remunerada', -2000, rules).kind).toBe('transferencia')
   })
 })
+
+import { groupByBank, lastStatementDate } from './stats'
+
+describe('cuentas agrupadas por banco', () => {
+  it('agrupa las cuentas del mismo banco y da la fecha del extracto', () => {
+    const a = [account({ id: 'r', bank: 'revolut' }), account({ id: 'c', bank: 'caixabank' }), account({ id: 'rr', bank: 'revolut' }), account({ id: 'e' })]
+    expect(groupByBank(a).map((g) => [g.bank, g.accounts.map((x) => x.id)])).toEqual([
+      ['revolut', ['r', 'rr']],
+      ['caixabank', ['c']],
+      [null, ['e']],
+    ])
+    const txs = [tx({ accountId: 'rr', date: '2026-11-04', amount: 1, source: 'extracto' }), tx({ accountId: 'rr', date: '2026-11-10', amount: 1, source: 'manual' })]
+    expect(lastStatementDate(a[2], txs)).toBe('2026-11-04')
+    expect(lastStatementDate(a[1], txs)).toBeNull()
+  })
+})

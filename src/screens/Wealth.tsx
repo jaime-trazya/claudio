@@ -7,17 +7,16 @@ import { BackBar, Money, Notice } from '../ui/components'
 import { navigate, routeParams, useRoute } from '../ui/router'
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { lineSeries } from '../charts/configs'
-import { accountBalance, monthlySeries } from '../domain/stats'
+import { monthlySeries } from '../domain/stats'
 import { netWorth, netWorthSeries, portfolioEvolution, portfolioSummary } from '../domain/investments'
 import { formatNumber, formatPercent, formatMoney } from '../lib/money'
 import { formatShortDate, monthShort, todayISO } from '../lib/dates'
-import { BankBadge } from '../ui/BankBadge'
 import { db } from '../db/db'
 import { useTRImport } from '../ui/useTRImport'
 import { GoalsSection } from './Goals'
+import { AccountList } from '../ui/AccountList'
 import type { Account, PositionKind } from '../db/types'
 
-const TYPE_LABEL: Record<Account['type'], string> = { banco: 'Banco', tarjeta: 'Tarjeta', efectivo: 'Efectivo', inversion: 'Inversión' }
 const ALLOC_COLOR: Record<PositionKind | 'efectivo', string> = { etf: 'var(--accent)', accion: '#5b8de8', cripto: 'var(--chart-2)', otro: '#8a8f94', efectivo: '#a9b3bd' }
 
 export function Wealth() {
@@ -67,25 +66,16 @@ export function Wealth() {
           </button>
         )}
       </div>
-      <section className="card flush list">
-        {others.length ? (
-          others.map((a) => (
-            <button key={a.id} className="list-item" onClick={() => navigate(`/movimientos?cuenta=${a.id}`)}>
-              <BankBadge account={a} size={36} />
-              <div className="grow">
-                <div className="primary-line ellipsis">{a.name}</div>
-                <div className="secondary-line">{TYPE_LABEL[a.type]}</div>
-              </div>
-              <Money cents={accountBalance(a, transactions)} plain />
-            </button>
-          ))
-        ) : (
+      {others.length ? (
+        <AccountList accounts={others} />
+      ) : (
+        <section className="card flush list">
           <div className="empty small">
             <strong>Sin cuentas</strong>
             Añade tu banco, tarjetas y efectivo con el botón +.
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <GoalsSection />
 
