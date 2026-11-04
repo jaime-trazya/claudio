@@ -180,6 +180,8 @@ Si no importas la cuenta corriente, deja esa opción vacía: entonces cuenta com
 - **Cómo se calculan los números**:
   - **Ingresos y gastos** no incluyen traspasos entre tus cuentas ni aportaciones a inversión.
   - Una **devolución** (por ejemplo, de Uber o de una compra) resta del gasto de su categoría, no cuenta como ingreso.
+  - **Traspasos entre tus cuentas**: se emparejan solos aunque vengan de extractos distintos (el cargo «Revolut**…» de CaixaBank con la recarga del mismo importe en Revolut, hasta 4 días de diferencia) y no cuentan. Los que no tienen pareja (dinero que entra desde o sale hacia una cuenta que no tienes en la app, como una recarga con otra tarjeta o un envío a tu imagin) cuentan como **Entradas desde otras cuentas** o **Salidas a otras cuentas**. Así siempre se cumple: ingresos − gastos = lo que varían tus saldos (más lo que aportas a inversión). Si añades esa otra cuenta, se emparejan y dejan de contar.
+  - **Efectivo**: sacar del cajero es gasto («Retirada de efectivo») e ingresar en el cajero es ingreso («Ingreso de efectivo»).
   - **Bizum** se separa en «Bizum enviado» (gasto) y «Bizum recibido» (ingreso).
   - El mes en curso se compara con **los mismos días del mes anterior** (del 1 al 4 frente al 1 al 4), no con el mes anterior entero.
   - La **tasa de ahorro** es lo que te queda de lo que ingresas. Si gastas más del doble de lo que entra se muestra como «< −100 %».

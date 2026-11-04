@@ -110,6 +110,12 @@ export async function syncDefaults(database: FinanzasDB = db): Promise<boolean> 
           t.categoryId = t.amount > 0 ? 'cat-transf-recibidas' : 'cat-transf-enviadas'
         })
     }
+    if (current < 5) {
+      // v5: ingresar efectivo en el cajero es un ingreso (retirarlo ya era gasto)
+      await database.transactions
+        .filter((t) => t.kind === 'transferencia' && !t.transferId && /ingreso (en )?cajero/i.test(t.bankDescription ?? t.description))
+        .modify({ kind: 'ingreso', categoryId: 'cat-efectivo-ingreso' })
+    }
     if (current < 4) {
       // v4: los intereses de la cuenta remunerada son ingresos, no traspasos
       await database.transactions

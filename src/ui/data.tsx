@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import { DEFAULT_SETTINGS, type Settings } from '../db/types'
 import { DataCtx, type AppData } from './useData'
+import { forStats } from '../domain/transfers'
 
 /** Carga todas las tablas y las mantiene al día (useLiveQuery reacciona a cualquier cambio) */
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       accounts: accs,
       categories: cats,
       transactions: transactions ?? [],
+      statTxs: forStats(transactions ?? []),
       rules: rules ?? [],
       budgets: budgets ?? [],
       snapshots: snapshots ?? [],

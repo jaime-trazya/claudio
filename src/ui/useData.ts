@@ -6,6 +6,8 @@ export interface AppData {
   accounts: Account[]
   categories: Category[]
   transactions: Transaction[]
+  /** Movimientos como cuentan en estadísticas (traspasos sin pareja = entradas/salidas de otras cuentas) */
+  statTxs: Transaction[]
   rules: Rule[]
   budgets: Budget[]
   snapshots: Snapshot[]

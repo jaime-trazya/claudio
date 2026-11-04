@@ -13,7 +13,7 @@ interface CatSeed {
 }
 
 /** Súbelo al cambiar categorías o reglas predefinidas: se sincronizan al abrir la app */
-export const DEFAULTS_VERSION = 4
+export const DEFAULTS_VERSION = 5
 
 /**
  * Categorías predefinidas. Los colores son tonos de la paleta (pálido + tinta oscura del mismo tono);
@@ -95,8 +95,11 @@ const SEED: CatSeed[] = [
   { id: 'cat-tabaco', name: 'Tabaco y estancos', icon: 'cigarette', color: '#78716c', since: 2 },
   { id: 'cat-apuestas', name: 'Apuestas y loterías', icon: 'dice', color: '#b91c1c', since: 2 },
   { id: 'cat-efectivo', name: 'Retirada de efectivo', icon: 'banknote', color: '#57534e' },
+  { id: 'cat-salida-externa', name: 'Salidas a otras cuentas', icon: 'arrows', color: '#6b7280', since: 5 },
   { id: 'cat-otros-gastos', name: 'Otros gastos', icon: 'dots', color: '#6b7280' },
   { id: 'cat-sueldo', name: 'Sueldo', icon: 'briefcase', color: '#2f7a45', kind: 'ingreso' },
+  { id: 'cat-efectivo-ingreso', name: 'Ingreso de efectivo', icon: 'banknote', color: '#2f7a45', kind: 'ingreso', since: 5 },
+  { id: 'cat-entrada-externa', name: 'Entradas desde otras cuentas', icon: 'arrows', color: '#2f7a45', kind: 'ingreso', since: 5 },
   { id: 'cat-bizum-recibido', name: 'Bizum recibido', icon: 'phone', color: '#2f7a45', kind: 'ingreso', since: 3 },
   { id: 'cat-transf-recibidas', name: 'Transferencias recibidas', icon: 'handcoins', color: '#2f7a45', kind: 'ingreso', since: 2 },
   { id: 'cat-reembolsos', name: 'Reembolsos', icon: 'undo', color: '#2f7a45', kind: 'ingreso' },
@@ -139,7 +142,7 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['transferencia a', 'transf a', 'transferencia enviada', 'western union', 'emision transferencia'], 'cat-transf-enviadas'],
   [['trade republic', 'traderepublic', 'buy trade', 'sell trade', 'savings plan', 'saveback', 'plan de inversion'], 'cat-inversion', 'aportacion'],
   // Traspasos entre tus propias cuentas: no cuentan como gasto ni ingreso
-  [['cuenta remunerada', 'apple pay top up', 'top up', 'recarga de apple pay', 'una recarga de apple pay', 'revolut', 'traspaso propio', 'traspaso entre cuentas', 'ingreso cajero', 'ingreso en cajero', 'recargar', 'cheque propio'], 'cat-transferencia', 'transferencia'],
+  [['cuenta remunerada', 'apple pay top up', 'top up', 'recarga de apple pay', 'una recarga de apple pay', 'revolut', 'traspaso propio', 'traspaso entre cuentas', 'recargar', 'cheque propio'], 'cat-transferencia', 'transferencia'],
   [['iberdrola', 'endesa', 'naturgy', 'holaluz', 'repsol luz', 'octopus energy', 'totalenergies', 'som energia', 'curenergia'], 'cat-luz'],
   [['canal de isabel', 'aigues', 'aguas de', 'emasesa', 'aqualia', 'emaya'], 'cat-agua'],
   [['movistar', 'vodafone', 'orange', 'yoigo', 'digi', 'pepephone', 'masmovil', 'lowi', 'simyo', 'o2 ', 'jazztel', 'finetwork', 'esim', 'esimflag', 'holafly', 'airalo'], 'cat-internet'],
@@ -168,6 +171,7 @@ const RULE_SEED: [keywords: string[], categoryId: string, kind?: TxKind][] = [
   [['gimnasio', 'basic fit', 'mcfit', 'altafit', 'vivagym', 'anytime fitness', 'holmes place', 'dir '], 'cat-deporte'],
   [['comision', 'comisión', 'cuota tarjeta', 'mantenimiento cuenta'], 'cat-comisiones'],
   [['agencia tributaria', 'aeat', 'hacienda', 'ayuntamiento', 'ibi ', 'dgt', 'tasa ', 'impuesto', 'impuestos', 'generalitat', 'dni pasaporte', 'tasas'], 'cat-impuestos'],
+  [['ingreso cajero', 'ingreso en cajero', 'ingreso efectivo', 'ingreso de efectivo'], 'cat-efectivo-ingreso', 'ingreso'],
   [['cajero', 'reintegro', 'reint cajero', 'cajero ajeno', 'retirada efectivo', 'retirada de efectivo', 'disposicion efectivo'], 'cat-efectivo'],
   [['devolucion', 'reembolso', 'abono compra'], 'cat-reembolsos', 'ingreso'],
   [['intereses', 'interes neto', 'interes bruto', 'interes neto pagado', 'interes neto pagado a cuenta remunerada', 'dividendo', 'dividend', 'remuneracion cuenta'], 'cat-intereses', 'ingreso'],

@@ -19,7 +19,7 @@ interface Option {
 }
 
 export function Movements({ route }: { route: string }) {
-  const { transactions, accounts, categories, categoryById, settings } = useData()
+  const { transactions, statTxs, accounts, categories, categoryById, settings } = useData()
   const { openTx } = useEditor()
   const params = routeParams(route)
   const [q, setQ] = useState('')
@@ -86,7 +86,8 @@ export function Movements({ route }: { route: string }) {
 
   // Resumen: sin cuenta elegida, ingresos y gastos reales (sin traspasos ni aportaciones);
   // con cuenta elegida, el dinero que entra y sale de esa cuenta y su saldo actual
-  const summary = summarize(list, { start: '0000-01-01', end: '9999-12-31' }, categoryById)
+  const statById = new Map(statTxs.map((t) => [t.id, t]))
+  const summary = summarize(list.map((t) => statById.get(t.id) ?? t), { start: '0000-01-01', end: '9999-12-31' }, categoryById)
   const inflow = list.reduce((s, t) => s + (t.amount > 0 ? t.amount : 0), 0)
   const outflow = list.reduce((s, t) => s + (t.amount < 0 ? -t.amount : 0), 0)
   const filteredAccount = fCuenta ? accounts.find((a) => a.id === fCuenta) : undefined

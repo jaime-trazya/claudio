@@ -29,7 +29,7 @@ function deltaWords(cur: number, prev: number, currency: string, lowerIsBetter =
 }
 
 export function Home() {
-  const { accounts, transactions, budgets, categories, settings, categoryById } = useData()
+  const { accounts, transactions, statTxs, budgets, categories, settings, categoryById } = useData()
   const { openTx, openAccount } = useEditor()
   const toast = useToast()
   const shortcut = useShortcutImport()
@@ -42,11 +42,11 @@ export function Home() {
   const prevKey = shiftMonth(month.key, -1)
   const prevRange = monthRange(prevKey.year, prevKey.month0, settings.monthStartDay)
   const prevName = monthName(prevKey.month0)
-  const cur = summarize(transactions, month, categoryById)
+  const cur = summarize(statTxs, month, categoryById)
   const cmp = comparableRange(month, prevRange, today)
-  const prev = summarize(transactions, cmp, categoryById)
+  const prev = summarize(statTxs, cmp, categoryById)
   const cmpLabel = cmp.partial ? `a día ${daysBetween(prevRange.start, cmp.end) + 1} de ${prevName}` : `${prevName} entero`
-  const statuses = budgets.map((b) => budgetStatus(b, transactions, month, categories))
+  const statuses = budgets.map((b) => budgetStatus(b, statTxs, month, categories))
   const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0)
   const pending = transactions.filter((t) => t.status === 'pendiente')
   const upcoming = detectRecurring(transactions, today)

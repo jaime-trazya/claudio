@@ -9,6 +9,7 @@ import { ChartCanvas } from '../charts/ChartCanvas'
 import { donut, incomeExpenseBars, lineSeries, savingsRateLine, singleBars } from '../charts/configs'
 import { balanceSeries, categoryMonthly, comparableRange, delta, expensesByCategory, monthlySeries, periodRange, summarize, topExpenses, topMerchants, type PeriodType } from '../domain/stats'
 import { budgetStatus } from '../domain/budgets'
+import { isExternalTransfer } from '../domain/transfers'
 import { detectRecurring, recurringTotals } from '../domain/recurring'
 import { accountingMonth, formatShortDate, monthRange, monthsBetween, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
 import { formatMoney, formatPercent, formatRate, parseAmount } from '../lib/money'
@@ -61,7 +62,7 @@ function DeltaLine({ cur, prev, lowerIsBetter = false, percent = true, label }: 
 }
 
 function Summary() {
-  const { transactions, categories, categoryById, accounts, settings } = useData()
+  const { transactions: rawTxs, statTxs: transactions, categories, categoryById, accounts, settings } = useData()
   const [type, setType] = useState<PeriodType>('mes')
   const [offset, setOffset] = useState(0)
   const today = todayISO()
@@ -76,6 +77,16 @@ function Summary() {
   const sum = useMemo(() => summarize(transactions, period, categoryById), [transactions, period.start, period.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
   const prev = useMemo(() => summarize(transactions, cmp, categoryById), [transactions, cmp.start, cmp.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
   const byCat = useMemo(() => expensesByCategory(transactions, period, categories), [transactions, period.start, period.end, categories]) // eslint-disable-line react-hooks/exhaustive-deps
+  const external = useMemo(() => {
+    let inn = 0
+    let out = 0
+    for (const t of transactions) {
+      if (!isExternalTransfer(t) || t.date < period.start || t.date > period.end) continue
+      if (t.amount > 0) inn += t.amount
+      else out -= t.amount
+    }
+    return { in: inn, out }
+  }, [transactions, period.start, period.end])  
   // Las gráficas mensuales siguen al periodo: el año elegido, o los 12 meses que acaban en el periodo
   const chartEnd = period.end < today ? period.end : today
   const [span, setSpan] = useState<6 | 12>(() => (typeof window !== 'undefined' && window.innerWidth < 560 ? 6 : 12))
@@ -83,7 +94,7 @@ function Summary() {
   const nMonths = type === 'personalizado' ? Math.min(24, Math.max(1, monthsBetween(period.start, period.end))) : type === 'año' ? 12 : span
   const months = useMemo(() => monthlySeries(transactions, nMonths, settings.monthStartDay, type === 'año' ? period.end : chartEnd, categoryById), [transactions, nMonths, settings.monthStartDay, type, period.end, chartEnd, categoryById])  
   const monthsLabel = `${monthLabel(months[0].key)} – ${monthLabel(months[months.length - 1].key)}`
-  const balances = useMemo(() => balanceSeries(accounts, transactions, months), [accounts, transactions, months])
+  const balances = useMemo(() => balanceSeries(accounts, rawTxs, months), [accounts, rawTxs, months])
   const top = useMemo(() => topExpenses(transactions, period, 5), [transactions, period.start, period.end]) // eslint-disable-line react-hooks/exhaustive-deps
   const merchants = useMemo(() => topMerchants(transactions, period, 5), [transactions, period.start, period.end]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -168,6 +179,14 @@ function Summary() {
           </div>
         </div>
       </section>
+
+      {(external.in > 0 || external.out > 0) && (
+        <p className="meta" style={{ padding: '0 4px' }}>
+          Incluye {external.in > 0 && <><Money cents={external.in} sign /> que entraron</>}
+          {external.in > 0 && external.out > 0 ? ' y ' : ' '}
+          {external.out > 0 && <><Money cents={-external.out} plain /> que salieron</>} con cuentas que no tienes en la app (traspasos sin pareja, por ejemplo una recarga con otra tarjeta). Si añades esa cuenta, se emparejan solos y dejan de contar.
+        </p>
+      )}
 
       <section className="card">
         <div className="card-head">
@@ -334,7 +353,7 @@ function Summary() {
 
 /** Evolución de una categoría en los últimos 12 meses, su media y dónde se gasta */
 function CategoryDetail({ categoryId, period, onClose }: { categoryId: string | null; period: DateRange; onClose: () => void }) {
-  const { transactions, categories, categoryById, settings } = useData()
+  const { statTxs: transactions, categories, categoryById, settings } = useData()
   const cat = categoryId ? categoryById.get(categoryId) : undefined
   const months = useMemo(() => monthlySeries([], 12, settings.monthStartDay, period.end < todayISO() ? period.end : todayISO()), [settings.monthStartDay, period.end])
   const series = useMemo(() => categoryMonthly(transactions, categoryId, months, categories), [transactions, categoryId, months, categories])
@@ -425,7 +444,7 @@ function MonthDetail({ month, hint }: { month: { key: string; income: number; ex
 }
 
 function Budgets() {
-  const { budgets, transactions, categories, categoryById, settings } = useData()
+  const { budgets, statTxs: transactions, categories, categoryById, settings } = useData()
   const toast = useToast()
   const [offset, setOffset] = useState(0)
   const [editing, setEditing] = useState<Partial<Budget> | null>(null)
