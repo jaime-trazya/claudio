@@ -168,26 +168,26 @@ export function Movements({ route }: { route: string }) {
                 </div>
               </>
             ) : (
-              <>
-                <div className="kpi">
+              <div className="kpi-row">
+                <div>
                   <div className="card-label">Ingresos</div>
                   <Money cents={summary.income} sign />
                 </div>
-                <div className="kpi">
+                <div>
                   <div className="card-label">Gastos</div>
                   <Money cents={-summary.expenses} plain />
                 </div>
-                <div className="kpi" style={{ gridColumn: '1 / -1', borderRight: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <div className="card-label">Ahorro (ingresos − gastos)</div>
+                <div>
+                  <div className="card-label">Ahorro</div>
                   <Money cents={summary.balance} sign />
                 </div>
-              </>
+              </div>
             )}
           </div>
           <p className="meta" style={{ padding: '0 var(--pad) 10px' }}>
             {search.label ? `${search.text ? `«${search.text}» · ` : ''}${search.label} · ` : ''}
             {list.length} movimiento{list.length === 1 ? '' : 's'}
-            {filteredAccount ? '' : ' · sin contar traspasos entre tus cuentas ni aportaciones. Es lo que has ahorrado, no lo que tienes: tu dinero actual está en Inicio y en Patrimonio'}
+            {filteredAccount ? '' : ' · sin traspasos entre tus cuentas. El ahorro es lo que te ha sobrado, no lo que tienes (eso está en Inicio).'}
           </p>
         </section>
       )}
@@ -201,19 +201,24 @@ export function Movements({ route }: { route: string }) {
         </div>
       )}
 
-      {groups.map((g) => (
-        <section key={g.date} aria-label={formatDay(g.date, today)}>
-          <div className="day-head">
-            <span>{formatDay(g.date, today)}</span>
-            <Money cents={dayTotal(g.items)} plain className="small" />
-          </div>
-          <div className="card flush list">
-            {g.items.map((t) => (
-              <TxRow key={t.id} tx={t} showAccount={!filters.cuenta} />
-            ))}
-          </div>
+      {groups.length > 0 && (
+        // Una sola lista con la fecha de cada día fija arriba al desplazar (antes, una tarjeta por día)
+        <section className="card flush tx-days" aria-label="Movimientos">
+          {groups.map((g) => (
+            <div key={g.date} className="tx-day" role="group" aria-label={formatDay(g.date, today)}>
+              <div className="day-head">
+                <span>{formatDay(g.date, today)}</span>
+                {g.items.length > 1 && <Money cents={dayTotal(g.items)} plain className="small" />}
+              </div>
+              <div className="list">
+                {g.items.map((t) => (
+                  <TxRow key={t.id} tx={t} showAccount={!filters.cuenta} />
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
-      ))}
+      )}
       {list.length > limit && (
         <button className="btn" onClick={() => setLimit(limit + 300)}>
           Mostrar más ({list.length - limit} restantes)

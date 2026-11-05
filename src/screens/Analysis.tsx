@@ -55,13 +55,13 @@ function DeltaLine({ cur, prev, lowerIsBetter = false, percent = true, label }: 
   const { settings } = useData()
   const d = delta(cur, prev)
   if (d.diff === 0) return <div className="meta">Igual que {label}</div>
-  if (prev === 0 && percent) return <div className="meta">Nada {label}</div>
+  if (prev === 0 && percent) return <div className="meta">Antes no había nada</div>
   const good = lowerIsBetter ? d.diff < 0 : d.diff > 0
   const showPct = percent && prev > 0 && d.ratio !== null && Math.abs(d.ratio) < 10
   return (
     <div className="meta" style={{ color: good ? 'var(--positive)' : undefined }}>
       {d.diff > 0 ? '▲' : '▼'} {formatMoney(Math.abs(d.diff), { currency: settings.currency })}
-      {showPct ? ` (${formatPercent(Math.abs(d.ratio!))})` : ''} vs. {label}
+      {showPct ? ` (${formatPercent(Math.abs(d.ratio!))})` : ''} {d.diff > 0 ? 'más' : 'menos'} que {label}
     </div>
   )
 }
@@ -78,7 +78,7 @@ function Summary() {
 
   const period = periodRange(type, offset, settings.monthStartDay, today, custom)
   const cmp = comparableRange(period, period.previous, today)
-  const cmpLabel = cmp.partial ? 'mismos días antes' : 'periodo anterior'
+  const cmpLabel = cmp.partial ? 'a estas alturas del anterior' : 'el periodo anterior'
   const sum = useMemo(() => summarize(transactions, period, categoryById), [transactions, period.start, period.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
   const prev = useMemo(() => summarize(transactions, cmp, categoryById), [transactions, cmp.start, cmp.end, categoryById]) // eslint-disable-line react-hooks/exhaustive-deps
   const byCat = useMemo(() => expensesByCategory(transactions, period, categories), [transactions, period.start, period.end, categories]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -171,7 +171,7 @@ function Summary() {
             <DeltaLine cur={sum.expenses} prev={prev.expenses} lowerIsBetter label={cmpLabel} />
           </div>
           <div className="kpi">
-            <div className="card-label">Balance</div>
+            <div className="card-label">Ahorro</div>
             <Money cents={sum.balance} sign />
             <DeltaLine cur={sum.balance} prev={prev.balance} percent={false} label={cmpLabel} />
           </div>
@@ -201,9 +201,9 @@ function Summary() {
         <div style={{ position: 'relative' }}>
           <ChartCanvas build={donutBuild} height={200} isEmpty={!slices.length} emptyText="Sin gastos en este periodo" label="Gastos por categoría" />
           {slices.length > 0 && (
-            <div className="chart-empty" style={{ flexDirection: 'column' }}>
-              <span className="meta">Total</span>
-              <Money cents={-sum.expenses} plain className="mid" />
+            <div className="chart-empty donut-center">
+              <span className="meta">Gastado</span>
+              <Money cents={sum.expenses} plain className="mid" />
             </div>
           )}
         </div>
@@ -440,7 +440,7 @@ function MonthDetail({ month, hint }: { month: { key: string; income: number; ex
           <Money cents={-month.expenses} plain />
         </span>
         <span className="small">
-          <span className="muted">Balance </span>
+          <span className="muted">Ahorro </span>
           <Money cents={month.balance} sign />
         </span>
       </div>
@@ -465,10 +465,10 @@ function Budgets() {
 
   return (
     <>
-      <div className="row between">
+      <div className="row between" style={{ gap: 8 }}>
         <PeriodSwitch label={monthLabel(range.key)} onPrev={() => setOffset(offset - 1)} onNext={() => setOffset(offset + 1)} nextDisabled={offset >= 0} />
-        <button className="btn small primary" onClick={() => setEditing({})}>
-          <Plus size={16} /> Presupuesto
+        <button className="btn small primary" style={{ flex: 'none' }} onClick={() => setEditing({})} aria-label="Nuevo presupuesto">
+          <Plus size={16} /> Nuevo
         </button>
       </div>
       {budgets.length === 0 ? (

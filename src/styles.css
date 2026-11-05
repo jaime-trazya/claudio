@@ -497,3 +497,11 @@ button.list-item:active, .list-item.tap:active { background: var(--rule); }
 .calendar-day + .calendar-day { border-top: 1px solid var(--rule); }
 .calendar-date { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 12px var(--pad) 2px; }
 .calendar-date .money { font-weight: 600; color: var(--text); }
+
+/* ---------- Movimientos: una lista con la fecha fija al desplazar ---------- */
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: var(--pad) var(--pad) 6px; }
+.kpi-row .money { font-size: 17px; font-weight: 600; }
+.tx-days { overflow: clip; }
+.tx-day + .tx-day { border-top: 1px solid var(--rule); }
+.tx-days .day-head { position: sticky; top: var(--safe-top); z-index: 1; background: var(--surface); padding: 10px var(--pad) 4px; }
+.donut-center { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; }
