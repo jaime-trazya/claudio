@@ -197,9 +197,15 @@ export function accountBalance(account: Account, txs: Transaction[], until?: ISO
   for (const tx of txs) {
     if (tx.accountId !== account.id) continue
     if (until && tx.date > until) continue
-    // Los ajustes de saldo hechos a mano después de importar el extracto siempre cuentan
-    const lateAdjustment = isAdjustment(tx) && tx.createdAt > (anchor?.createdAt ?? 0)
-    if (anchor && !lateAdjustment && (tx.bankBalance !== undefined || tx.date <= anchor.bankEffDate!)) continue
+    if (anchor) {
+      // Lo que viene del extracto ya está dentro del saldo del banco
+      if (tx.bankBalance !== undefined) continue
+      // Un movimiento sin conciliar del mismo día del extracto o posterior no está en él (si lo
+      // estuviera, se habría emparejado al importar): cuenta. Los anteriores ya los cubre el saldo
+      // del banco, salvo los ajustes de saldo hechos a mano después de importar.
+      const lateAdjustment = isAdjustment(tx) && tx.createdAt > (anchor.createdAt ?? 0)
+      if (tx.date < anchor.bankEffDate! && !lateAdjustment) continue
+    }
     b += tx.amount
   }
   return b

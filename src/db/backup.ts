@@ -19,17 +19,36 @@ export async function createBackup(database: FinanzasDB = db): Promise<Backup> {
 
 export class BackupError extends Error {}
 
+/** Tablas que toda copia debe traer (las más nuevas, como los objetivos, son opcionales) */
+export const REQUIRED_TABLES = ['accounts', 'categories', 'transactions', 'rules', 'budgets', 'settings'] as const
+
 export function validateBackup(data: unknown): Backup {
   if (!data || typeof data !== 'object') throw new BackupError('El archivo no es una copia de seguridad válida.')
   const b = data as Partial<Backup>
   if (b.app !== BACKUP_APP) throw new BackupError('Este archivo no es una copia de seguridad de esta app.')
   if (!b.tables || typeof b.tables !== 'object') throw new BackupError('La copia no contiene datos.')
+  const tables = b.tables as Record<string, unknown>
+  const missing = REQUIRED_TABLES.filter((t) => !Array.isArray(tables[t]))
+  if (missing.length) throw new BackupError(`La copia está incompleta: le faltan ${missing.join(', ')}. No se ha tocado nada.`)
   for (const t of ALL_TABLES) {
-    const rows = (b.tables as Record<string, unknown>)[t]
-    if (rows !== undefined && !Array.isArray(rows)) throw new BackupError(`La tabla "${t}" de la copia está dañada.`)
+    const rows = tables[t]
+    if (rows !== undefined && !Array.isArray(rows)) throw new BackupError(`La tabla «${t}» de la copia está dañada.`)
+  }
+  // Cada registro necesita su identificador, o la base de datos lo rechazaría a medias
+  for (const t of ALL_TABLES) {
+    const rows = (tables[t] ?? []) as unknown[]
+    const key = t === 'settings' ? 'key' : 'id'
+    if (rows.some((r) => !r || typeof r !== 'object' || typeof (r as Record<string, unknown>)[key] !== 'string')) {
+      throw new BackupError(`La tabla «${t}» de la copia tiene registros dañados. No se ha tocado nada.`)
+    }
   }
   if (typeof b.schemaVersion === 'number' && b.schemaVersion > 1000) throw new BackupError('Versión de copia desconocida.')
   return b as Backup
+}
+
+/** Resumen de lo que trae una copia, para enseñarlo antes de restaurar */
+export function backupSummary(b: Backup): { accounts: number; transactions: number; exportedAt: string | null } {
+  return { accounts: b.tables.accounts?.length ?? 0, transactions: b.tables.transactions?.length ?? 0, exportedAt: b.exportedAt ?? null }
 }
 
 /**

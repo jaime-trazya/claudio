@@ -14,6 +14,14 @@ export function fromISO(s: ISODate): Date {
 
 export const todayISO = (): ISODate => toISO(new Date())
 
+/** ¿Es una fecha "AAAA-MM-DD" real? (rechaza vacías y fechas imposibles) */
+export function isValidISO(s: unknown): s is ISODate {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const [y, m, d] = s.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d
+}
+
 function valid(y: number, m: number, d: number): ISODate | null {
   if (y < 100) y += y > 70 ? 1900 : 2000
   if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1970 || y > 2100) return null
@@ -148,6 +156,7 @@ export function monthLabel(key: string, withYear = true): string {
 }
 
 export function formatDay(iso: ISODate, today = todayISO()): string {
+  if (!isValidISO(iso)) return 'Sin fecha'
   if (iso === today) return 'Hoy'
   if (iso === addDays(today, -1)) return 'Ayer'
   const d = fromISO(iso)
@@ -161,6 +170,7 @@ export function formatDay(iso: ISODate, today = todayISO()): string {
 }
 
 export function formatShortDate(iso: ISODate): string {
+  if (!isValidISO(iso)) return 'sin fecha'
   const d = fromISO(iso)
   return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]} ${d.getFullYear()}`
 }

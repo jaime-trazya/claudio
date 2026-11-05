@@ -71,7 +71,7 @@ export function ManualValue({ account, onClose }: { account: Account; onClose: (
       footer={
         <button
           className="btn primary block"
-          disabled={cents === null || cents <= 0}
+          disabled={cents === null || cents <= 0 || !date}
           onClick={async () => {
             const res = await saveSnapshot(account.id, { date, positions: [], cash: 0, total: cents!, fingerprint: hash(`manual|${account.id}|${date}|${cents}`) }, 'manual')
             toast.show(res.saved ? 'Valor guardado' : 'Ya había un valor igual para esa fecha')

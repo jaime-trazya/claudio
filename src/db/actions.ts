@@ -8,7 +8,7 @@ import type { TRStatement } from '../import/tradeRepublic'
 import { normalize, uid } from '../lib/text'
 import { bankOrder } from '../domain/stats'
 import { getSettings, setSetting } from './settings'
-import { todayISO } from '../lib/dates'
+import { isValidISO, toISO, todayISO } from '../lib/dates'
 import { reseed } from './db'
 import { createRestorePoint } from './history'
 
@@ -29,20 +29,50 @@ export function newTransaction(p: Partial<Transaction> & Pick<Transaction, 'acco
   }
 }
 
+export class InvalidTransactionError extends Error {}
+
 export async function saveTransaction(tx: Transaction) {
+  // Nunca se guarda un movimiento sin fecha válida: rompería las listas y los cálculos por fecha
+  if (!isValidISO(tx.date)) throw new InvalidTransactionError('El movimiento necesita una fecha válida')
+  if (!Number.isFinite(tx.amount)) throw new InvalidTransactionError('El importe no es válido')
   await db.transactions.put({ ...tx, updatedAt: now() })
 }
 
-/** Borra un movimiento (y la otra pata si es una transferencia) */
-export async function deleteTransaction(tx: Transaction) {
-  await db.transaction('rw', db.transactions, async () => {
-    if (tx.transferId) await db.transactions.where('transferId').equals(tx.transferId).delete()
-    else await db.transactions.delete(tx.id)
+/**
+ * Borra un movimiento (y la otra pata si es una transferencia).
+ * Devuelve todo lo borrado, para poder deshacerlo entero con restoreTransactions.
+ */
+export async function deleteTransaction(tx: Transaction): Promise<Transaction[]> {
+  return db.transaction('rw', db.transactions, async () => {
+    const removed = tx.transferId ? await db.transactions.where('transferId').equals(tx.transferId).toArray() : [tx]
+    await db.transactions.bulkDelete(removed.map((t) => t.id))
+    return removed
   })
+}
+
+/** Deshace un borrado: vuelve a poner todos los movimientos borrados (las dos patas de una transferencia) */
+export async function restoreTransactions(txs: Transaction[]) {
+  await db.transactions.bulkPut(txs)
+}
+
+/**
+ * Repara datos dañados de versiones anteriores: movimientos sin fecha válida pasan a la fecha
+ * en que se crearon, para que no rompan la lista de movimientos.
+ */
+export async function repairData(): Promise<number> {
+  let fixed = 0
+  await db.transactions
+    .filter((t) => !isValidISO(t.date))
+    .modify((t) => {
+      t.date = toISO(new Date(t.createdAt || Date.now()))
+      fixed++
+    })
+  return fixed
 }
 
 /** Transferencia entre cuentas: dos movimientos enlazados que no cuentan como gasto ni ingreso */
 export async function createTransfer(p: { from: Account; to: Account; amount: number; date: string; description?: string; notes?: string }) {
+  if (!isValidISO(p.date)) throw new InvalidTransactionError('La transferencia necesita una fecha válida')
   const transferId = uid()
   const kind: TxKind = p.to.type === 'inversion' ? 'aportacion' : 'transferencia'
   const desc = p.description?.trim() || `Transferencia ${p.from.name} → ${p.to.name}`
@@ -247,7 +277,7 @@ export async function saveSnapshot(accountId: string, st: Pick<TRStatement, 'dat
   const snapshot: Snapshot = {
     id: uid(),
     accountId,
-    date: st.date ?? todayISO(),
+    date: isValidISO(st.date) ? st.date : todayISO(),
     positions: st.positions,
     cash: st.cash,
     total: st.total,

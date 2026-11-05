@@ -65,7 +65,10 @@ function rank(mv: ParsedMovement, tx: Transaction): number {
 const balanceKey = (accountId: string, date: string, amount: number, balance: number) => `${accountId}|${date}|${amount}|b${balance}`
 
 export function planImport(movements: ParsedMovement[], accountId: string, existing: Transaction[]): PlanRow[] {
-  const keyCount = new Map<string, number>()
+  // Movimientos ya guardados: los que tienen saldo del banco se reconocen por el saldo (distingue dos
+  // compras iguales del mismo día); los que no lo tienen, por el concepto.
+  const keyCount = new Map<string, number>() // todos, por concepto
+  const keyNoBal = new Map<string, number>() // solo los que no tienen saldo del banco, por concepto
   const balCount = new Map<string, number>()
   // Lo mismo en otras cuentas (p. ej. un extracto importado antes en la cuenta equivocada)
   const elsewhere = new Map<string, { accountId: string; n: number }>()
@@ -74,6 +77,7 @@ export function planImport(movements: ParsedMovement[], accountId: string, exist
     if (tx.accountId === accountId) {
       bump(keyCount, existingKey(tx))
       if (tx.bankBalance !== undefined) bump(balCount, balanceKey(accountId, tx.bankDate ?? tx.date, tx.amount, tx.bankBalance))
+      else bump(keyNoBal, existingKey(tx))
     } else if (tx.source === 'extracto') {
       const k = dupKey('*', tx.bankDate ?? tx.date, tx.amount, tx.bankDescription ?? tx.description)
       const e = elsewhere.get(k)
@@ -89,9 +93,20 @@ export function planImport(movements: ParsedMovement[], accountId: string, exist
 
   const rows: PlanRow[] = movements.map((mv) => {
     const key = dupKey(accountId, mv.date, mv.amount, mv.description)
-    if (take(keyCount, key)) return { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false }
-    if (mv.balance !== undefined && take(balCount, balanceKey(accountId, mv.date, mv.amount, mv.balance))) {
-      return { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false }
+    const dup: PlanRow = { movement: mv, key, status: 'duplicado', matchId: null, options: [], include: false }
+    if (mv.balance !== undefined) {
+      // Con saldo: primero por el saldo; por concepto solo contra los guardados sin saldo
+      if (take(balCount, balanceKey(accountId, mv.date, mv.amount, mv.balance))) {
+        take(keyCount, key)
+        return dup
+      }
+      if (take(keyNoBal, key)) {
+        take(keyCount, key)
+        return dup
+      }
+    } else if (take(keyCount, key)) {
+      take(keyNoBal, key)
+      return dup
     }
     const other = elsewhere.get(dupKey('*', mv.date, mv.amount, mv.description))
     if (other && other.n > 0) {

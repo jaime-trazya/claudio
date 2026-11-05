@@ -6,8 +6,8 @@ import { useToast } from '../ui/toast'
 import { CategoryPicker, CategoryTile, Money, Segmented, Sheet, Switch } from '../ui/components'
 import { categoryLabel } from '../ui/format'
 import { formatMoney, parseAmount } from '../lib/money'
-import { todayISO } from '../lib/dates'
-import { applyRuleEverywhere, createTransfer, deleteTransaction, newTransaction, saveTransaction } from '../db/actions'
+import { isValidISO, todayISO } from '../lib/dates'
+import { applyRuleEverywhere, createTransfer, deleteTransaction, newTransaction, restoreTransactions, saveTransaction } from '../db/actions'
 import { merchantKey } from '../lib/text'
 import { db } from '../db/db'
 
@@ -58,8 +58,10 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
     return m
   }, [])
 
+  const validDate = isValidISO(date)
   const canSave =
     absAmount > 0 &&
+    validDate &&
     !!accountId &&
     (mode === 'transferencia' && isNew ? !!toAccountId && toAccountId !== accountId : description.trim().length > 0) &&
     (splits.length === 0 || splitRemaining === 0)
@@ -133,9 +135,9 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       danger: true,
     })
     if (!ok) return
-    await deleteTransaction(tx)
+    const removed = await deleteTransaction(tx)
     onClose()
-    toast.show('Movimiento borrado', { action: { label: 'Deshacer', run: () => void saveTransaction(tx) } })
+    toast.show(removed.length > 1 ? 'Transferencia borrada (las dos partes)' : 'Movimiento borrado', { action: { label: 'Deshacer', run: () => void restoreTransactions(removed) } })
   }
 
   if (!usable.length) {
@@ -192,7 +194,8 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       <div className="form-grid">
         <label className="field">
           <span>Fecha</span>
-          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input className="input" type="date" value={date} required onChange={(e) => setDate(e.target.value)} aria-invalid={!validDate} style={!validDate ? { borderColor: 'var(--negative)' } : undefined} />
+          {!validDate && <span className="small" style={{ color: 'var(--negative)' }}>Pon una fecha</span>}
         </label>
         <label className="field">
           <span>{mode === 'transferencia' && isNew ? 'Desde' : 'Cuenta'}</span>

@@ -1,6 +1,6 @@
 import { db, type FinanzasDB } from './db'
 import { createBackup, restoreBackup } from './backup'
-import { uid } from '../lib/text'
+import { hash, uid } from '../lib/text'
 import { todayISO } from '../lib/dates'
 
 /**
@@ -40,19 +40,27 @@ async function gunzip(data: ArrayBuffer): Promise<string> {
   return await new Response(stream).text()
 }
 
+/**
+ * Huella de todos los datos: contenido completo de las tablas pequeñas (cuentas, categorías, reglas,
+ * presupuestos, objetivos, ajustes, plantillas, fotos de inversión) y, para los movimientos, número,
+ * fechas de cambio e ids. Detecta cualquier cambio, también el nombre o el saldo inicial de una cuenta.
+ */
 async function signatureOf(database: FinanzasDB): Promise<string> {
-  const [tx, last, acc, rules, cats, snaps, budgets, goals] = await Promise.all([
-    database.transactions.count(),
-    database.transactions.orderBy('date').last(),
-    database.accounts.count(),
-    database.rules.count(),
-    database.categories.count(),
-    database.snapshots.count(),
-    database.budgets.count(),
-    database.goals.count(),
+  const [accounts, categories, rules, budgets, goals, settings, templates, snapshots, txs] = await Promise.all([
+    database.accounts.toArray(),
+    database.categories.toArray(),
+    database.rules.toArray(),
+    database.budgets.toArray(),
+    database.goals.toArray(),
+    database.settings.toArray(),
+    database.templates.toArray(),
+    database.snapshots.toArray(),
+    database.transactions.toArray(),
   ])
-  const maxUpdated = (await database.transactions.toArray()).reduce((m, t) => Math.max(m, t.updatedAt), 0)
-  return [tx, last?.id, acc, rules, cats, snaps, budgets, goals, maxUpdated].join('|')
+  const small = JSON.stringify([accounts, categories, rules, budgets, goals, settings.filter((s) => s.key !== 'lastBackupAt'), templates, snapshots.map((s) => [s.id, s.total, s.date])])
+  let txPart = String(txs.length)
+  for (const t of txs) txPart += `|${t.id}:${t.updatedAt}`
+  return `${hash(small)}-${hash(txPart)}`
 }
 
 export async function createRestorePoint(label: string, kind: RestorePoint['kind'] = 'accion', database: FinanzasDB = db): Promise<string | null> {
