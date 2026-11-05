@@ -8,6 +8,7 @@ import { routeParams, navigate } from '../ui/router'
 import { categoryLabel, KIND_LABEL } from '../ui/format'
 import { accountingMonth, formatDay, monthLabel, todayISO } from '../lib/dates'
 import { normalize } from '../lib/text'
+import { parseSearch } from '../domain/insights'
 import { accountBalance, isCountable, summarize } from '../domain/stats'
 import type { Transaction } from '../db/types'
 
@@ -53,7 +54,9 @@ export function Movements({ route }: { route: string }) {
     return new Set([fCat, ...categories.filter((c) => c.parentId === fCat).map((c) => c.id)])
   })()
 
-  const nq = normalize(q)
+  // «¿Cuánto gasté en Mercadona este año?»: el periodo se separa del texto que se busca
+  const search = parseSearch(q, todayISO(), startDay)
+  const nq = normalize(search.text)
   const list = (() => {
     return transactions.filter((t) => {
       if (fCuenta && t.accountId !== fCuenta) return false
@@ -64,9 +67,10 @@ export function Movements({ route }: { route: string }) {
         const ids = t.splits?.length ? t.splits.map((s) => s.categoryId ?? 'none') : [t.categoryId ?? 'none']
         if (!ids.some((id) => catIds.has(id))) return false
       }
+      if (search.range && (t.date < search.range.start || t.date > search.range.end)) return false
       if (nq) {
         const hay = normalize([t.description, t.bankDescription, t.notes, t.tags.join(' '), categoryById.get(t.categoryId ?? '')?.name].filter(Boolean).join(' '))
-        if (!hay.includes(nq) && !String(Math.abs(t.amount) / 100).replace('.', ',').includes(q.trim())) return false
+        if (!hay.includes(nq) && !String(Math.abs(t.amount) / 100).replace('.', ',').includes(search.text.trim())) return false
       }
       return true
     })
@@ -131,7 +135,7 @@ export function Movements({ route }: { route: string }) {
       </div>
       <div className="search">
         <Search size={18} />
-        <input className="input" type="search" placeholder="Buscar concepto, nota, etiqueta o importe" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" />
+        <input className="input" type="search" placeholder="Busca o pregunta: «Mercadona este año»" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" />
       </div>
       <div className="chips" role="toolbar" aria-label="Filtros">
         {(Object.keys(options) as FilterKey[]).map((k) => (
@@ -181,6 +185,7 @@ export function Movements({ route }: { route: string }) {
             )}
           </div>
           <p className="meta" style={{ padding: '0 var(--pad) 10px' }}>
+            {search.label ? `${search.text ? `«${search.text}» · ` : ''}${search.label} · ` : ''}
             {list.length} movimiento{list.length === 1 ? '' : 's'}
             {filteredAccount ? '' : ' · sin contar traspasos entre tus cuentas ni aportaciones. Es lo que has ahorrado, no lo que tienes: tu dinero actual está en Inicio y en Patrimonio'}
           </p>

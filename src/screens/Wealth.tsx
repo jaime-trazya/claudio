@@ -40,9 +40,9 @@ export function Wealth() {
         </button>
       </div>
 
-      <section className="card">
+      <section className="card hero-total">
         <div className="card-label">Patrimonio total</div>
-        <Money cents={nw.total} plain className="big" />
+        <Money cents={nw.total} plain className="hero" />
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
           <div>
             <div className="meta">Cuentas</div>

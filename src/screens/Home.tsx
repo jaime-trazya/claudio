@@ -1,4 +1,4 @@
-import { ArrowLeftRight, CircleCheck, CloudUpload, FileUp, Plus, Smartphone, TrendingUp, TriangleAlert, Info } from 'lucide-react'
+import { ArrowLeftRight, CircleCheck, CloudUpload, Eye, EyeOff, FileUp, Flame, Plus, Smartphone, TrendingUp, TriangleAlert, Info } from 'lucide-react'
 import { useData } from '../ui/useData'
 import { useEditor } from '../ui/editor'
 import { useToast } from '../ui/toast'
@@ -14,6 +14,8 @@ import { comparableRange, cumulativeExpenses, monthProjection, summarize } from 
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { cumulativeMonth } from '../charts/configs'
 import { netWorth } from '../domain/investments'
+import { unusualSpending } from '../domain/insights'
+import { setSetting } from '../db/settings'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
 import { confirmTransactions } from '../db/actions'
@@ -23,11 +25,12 @@ import { AccountList } from '../ui/AccountList'
 import { useState } from 'react'
 import { useTRImport } from '../ui/useTRImport'
 
-function deltaWords(cur: number, prev: number, currency: string, lowerIsBetter = false) {
+function deltaWords(cur: number, prev: number, currency: string, lowerIsBetter = false, hidden = false) {
   const d = cur - prev
   if (prev === 0 && cur === 0) return { text: 'Sin movimientos', tone: '' }
   if (d === 0) return { text: 'Igual', tone: '' }
   const better = lowerIsBetter ? d < 0 : d > 0
+  if (hidden) return { text: d > 0 ? 'Más' : 'Menos', tone: better ? 'var(--positive)' : 'var(--muted)' }
   return { text: `${formatMoney(Math.abs(d), { currency, compact: Math.abs(d) >= 100000 })} ${d > 0 ? 'más' : 'menos'}`, tone: better ? 'var(--positive)' : 'var(--muted)' }
 }
 
@@ -123,9 +126,11 @@ export function Home() {
   const spentRatio = budgetTotal ? budgetSpent / budgetTotal : 0
   const nw = netWorth(accounts, transactions, snapshots)
   const projected = monthProjection(statTxs, month, today, recurring, categoryById)
+  const unusual = unusualSpending(statTxs, today, settings.monthStartDay, categories)
+  const hidden = settings.hideAmounts
   const dayRatio = Math.min(1, dayN / totalDays)
-  const incomeD = deltaWords(cur.income, prev.income, currency)
-  const expD = deltaWords(cur.expenses, prev.expenses, currency, true)
+  const incomeD = deltaWords(cur.income, prev.income, currency, false, hidden)
+  const expD = deltaWords(cur.expenses, prev.expenses, currency, true, hidden)
 
   return (
     <main className="screen">
@@ -137,9 +142,14 @@ export function Home() {
             {settings.monthStartDay > 1 ? ` · mes contable desde el ${settings.monthStartDay}` : ''}
           </p>
         </div>
-        <button className="icon-btn primary" onClick={() => openTx()} aria-label="Añadir movimiento">
-          <Plus size={22} />
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="icon-btn" onClick={() => void setSetting('hideAmounts', !hidden)} aria-label={hidden ? 'Mostrar importes' : 'Ocultar importes'} aria-pressed={hidden}>
+            {hidden ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
+          <button className="icon-btn primary" onClick={() => openTx()} aria-label="Añadir movimiento">
+            <Plus size={22} />
+          </button>
+        </div>
       </div>
 
       {inSafari && <SafariNotice />}
@@ -195,11 +205,11 @@ export function Home() {
         )}
         {projected !== null && (
           <p className="small projection">
-            A este ritmo, unos <strong>{formatMoney(projected, { currency })}</strong> a fin de mes
+            A este ritmo, unos <Money cents={projected} plain /> a fin de mes
             {budgetTotal > 0 && projected > budgetTotal ? ' · por encima de lo presupuestado' : ''}
           </p>
         )}
-        {(chartNow.some(Boolean) || chartBefore.some(Boolean)) && (
+        {!hidden && (chartNow.some(Boolean) || chartBefore.some(Boolean)) && (
           <div>
             <ChartCanvas build={chartBuild} height={120} label={`Gasto acumulado de ${monthName(fromISO(today).getMonth())} frente a ${prevName}`} />
             <p className="meta chart-key">
@@ -291,9 +301,30 @@ export function Home() {
             icon={<TriangleAlert size={20} />}
             title={s.level === 'superado' ? `${cat?.name ?? 'Categoría'}: presupuesto superado` : `${cat?.name ?? 'Categoría'}: ya llevas el ${Math.round(s.ratio * 100)} %`}
           >
-            {s.level === 'superado'
+            {hidden
+              ? 'Toca el ojo de arriba para ver las cifras.'
+              : s.level === 'superado'
               ? `Te has pasado en ${formatMoney(-s.remaining, { currency })} de ${formatMoney(s.budget.amount, { currency })}.`
               : `Quedan ${formatMoney(s.remaining, { currency })} de ${formatMoney(s.budget.amount, { currency })} para lo que queda de mes.`}
+          </Notice>
+        )
+      })}
+
+      {unusual.map((u) => {
+        const cat = u.categoryId ? categoryById.get(u.categoryId) : undefined
+        return (
+          <Notice
+            key={u.categoryId ?? 'none'}
+            tone="warn"
+            icon={<Flame size={20} />}
+            title={`${cat?.name ?? 'Sin categoría'}: ${u.ratio >= 2 ? `${Math.floor(u.ratio)} veces` : `un ${Math.round((u.ratio - 1) * 100)} % más de`} lo normal`}
+            actions={
+              <button className="btn small" onClick={() => navigate(`/movimientos?mes=${month.key}${u.categoryId ? `&cat=${u.categoryId}` : '&cat=none'}`)}>
+                Ver movimientos
+              </button>
+            }
+          >
+            {hidden ? 'Llevas más de lo que sueles a estas alturas de mes.' : `Llevas ${formatMoney(u.current, { currency })} este mes; a estas alturas sueles llevar unos ${formatMoney(u.usual, { currency })}.`}
           </Notice>
         )
       })}

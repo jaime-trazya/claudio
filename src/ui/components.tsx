@@ -14,6 +14,8 @@ export function Money({ cents: raw, className = '', sign = false, plain = false,
   const cents = raw === 0 ? 0 : raw // evita "−0,00 €"
 
   const cur = currency ?? settings.currency
+  // Modo privado: se ve que hay un importe, no cuánto
+  if (settings.hideAmounts) return <span className={`money hidden-amount ${className}`} aria-label="Importe oculto">•••</span>
   const { main, decimals } = splitMoney(cents, cur)
   const tone = plain ? '' : cents > 0 && sign ? 'pos' : cents === 0 ? 'zero' : ''
   return (

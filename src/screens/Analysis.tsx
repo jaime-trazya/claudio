@@ -11,6 +11,9 @@ import { balanceSeries, categoryMonthly, comparableRange, delta, expensesByCateg
 import { budgetStatus } from '../domain/budgets'
 import { isExternalTransfer } from '../domain/transfers'
 import { detectRecurring, recurringTotals } from '../domain/recurring'
+import { chargesCalendar } from '../domain/insights'
+import { netWorth } from '../domain/investments'
+import { addDays, formatDay } from '../lib/dates'
 import { accountingMonth, formatShortDate, monthRange, monthsBetween, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
 import { formatMoney, formatPercent, formatRate, parseAmount } from '../lib/money'
 import { db } from '../db/db'
@@ -18,7 +21,7 @@ import { setSetting } from '../db/settings'
 import { uid } from '../lib/text'
 import type { Budget } from '../db/types'
 
-type View = 'resumen' | 'presupuestos' | 'recurrentes'
+type View = 'resumen' | 'presupuestos' | 'recurrentes' | 'calendario'
 
 export function Analysis({ route }: { route: string }) {
   const params = routeParams(route)
@@ -35,12 +38,14 @@ export function Analysis({ route }: { route: string }) {
         options={[
           { value: 'resumen', label: 'Resumen' },
           { value: 'presupuestos', label: 'Presupuestos' },
-          { value: 'recurrentes', label: 'Recurrentes' },
+          { value: 'recurrentes', label: 'Recibos' },
+          { value: 'calendario', label: 'Calendario' },
         ]}
       />
       {view === 'resumen' && <Summary />}
       {view === 'presupuestos' && <Budgets />}
       {view === 'recurrentes' && <RecurringList />}
+      {view === 'calendario' && <ChargesCalendar />}
     </main>
   )
 }
@@ -671,6 +676,57 @@ function RecurringList() {
           <Pencil size={14} /> Mostrar los {settings.dismissedRecurring.length} ocultos
         </button>
       )}
+    </>
+  )
+}
+
+/** Los recibos de los próximos 30 días, día a día, con el dinero que te irá quedando */
+function ChargesCalendar() {
+  const { accounts, transactions, snapshots, categoryById, settings } = useData()
+  const today = todayISO()
+  const end = addDays(today, 30)
+  const recurring = detectRecurring(transactions, today).filter((r) => !settings.dismissedRecurring.includes(r.key))
+  const cash = netWorth(accounts, transactions, snapshots).cash
+  const days = chargesCalendar(recurring, today, end, cash)
+  const total = days.reduce((s, d) => s + d.items.reduce((x, i) => x + i.amount, 0), 0)
+  const last = days.length ? days[days.length - 1].balance : cash
+  return (
+    <>
+      <section className="card">
+        <div className="card-label">Recibos de aquí a 30 días</div>
+        <Money cents={-total} plain className="big" />
+        <p className="meta" style={{ marginTop: 6 }}>
+          Tienes <Money cents={cash} plain /> en tus cuentas; tras estos recibos te quedarían <Money cents={last} plain /> (sin contar ingresos ni el gasto del día a día).
+        </p>
+        {last < 0 && <p className="small" style={{ color: 'var(--negative)', marginTop: 6 }}>Con lo que tienes no llegas a pagarlos todos: revisa antes de que lleguen.</p>}
+      </section>
+      {days.length === 0 ? (
+        <div className="card empty">
+          <strong>Sin recibos a la vista</strong>
+          <p>Cuando la app detecte pagos que se repiten cada mes (alquiler, luz, suscripciones…) aparecerán aquí con su fecha.</p>
+        </div>
+      ) : (
+        <section className="card flush list" aria-label="Calendario de recibos">
+          {days.map((d) => (
+            <div key={d.date} className="calendar-day">
+              <div className="calendar-date">
+                <strong>{formatDay(d.date, today)}</strong>
+                <span className="meta">
+                  Quedarían <Money cents={d.balance} plain />
+                </span>
+              </div>
+              {d.items.map((it, i) => (
+                <div key={i} className="list-item">
+                  <CategoryTile category={it.categoryId ? categoryById.get(it.categoryId) : null} size="sm" />
+                  <div className="grow primary-line ellipsis">{it.name}</div>
+                  <Money cents={-it.amount} plain />
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
+      <p className="meta">Fechas previstas a partir de los cargos de los meses anteriores. Si alguno no es un recibo, ocúltalo en «Recibos».</p>
     </>
   )
 }

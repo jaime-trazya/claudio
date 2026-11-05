@@ -55,6 +55,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [fingerprint, setFingerprint] = useState('')
   const [seenBefore, setSeenBefore] = useState<{ date: string; accountId?: string } | null>(null)
   const [bankName, setBankName] = useState<string | null>(null)
+  const [bankId, setBankId] = useState<string | null>(null)
   const undo = useUndo()
   const tr = useTRImport()
   const sorted = useMemo(() => effectiveRules(rules, settings.ownerName), [rules, settings.ownerName])
@@ -125,10 +126,14 @@ export function ImportStatement({ route }: { route: string }) {
   function pickAccountFor(text: string, header: string): string {
     const bank = detectBank(text, header)
     setBankName(bank?.name ?? null)
+    setBankId(bank?.id ?? null)
     if (!bank) return accountId
+    // La cuenta en la que importaste la última vez un extracto de este banco (si tienes varias en él)
+    const remembered = usable.find((a) => a.id === settings.importMemory[`bank:${bank.id}`])
     // imagin y CaixaBank comparten IBAN: si solo tienes una de las dos, va a esa
     const sibling = bank.id === 'caixabank' ? 'imagin' : bank.id === 'imagin' ? 'caixabank' : null
     const match =
+      remembered ??
       usable.find((a) => a.bank === bank.id) ??
       usable.find((a) => a.name.toLowerCase().includes(bank.name.toLowerCase())) ??
       (sibling ? usable.find((a) => a.bank === sibling) : undefined)
@@ -147,11 +152,21 @@ export function ImportStatement({ route }: { route: string }) {
       toast.show('El archivo está vacío o no se puede leer')
       return
     }
+    // Mismo tipo de archivo (misma cabecera) que otra vez: a la cuenta de entonces
+    const rememberAccount = (m: ColumnMapping) => {
+      const known = usable.find((a) => a.id === settings.importMemory[`sig:${headerSignature(data, m.headerRow)}`])
+      if (known && known.id !== acc) {
+        acc = known.id
+        setAccountId(known.id)
+        toast.show(`Como la última vez, se importará en «${known.name}»`)
+      }
+    }
     // 1) Plantilla guardada para este banco
     const tpl = templates.find((t) => t.mapping.headerRow < data.length && headerSignature(data, t.mapping.headerRow) === t.signature)
     if (tpl) {
       setMapping(tpl.mapping)
       setTemplateName(tpl.name)
+      rememberAccount(tpl.mapping)
       const p = buildPlan(tpl.mapping, data, acc)
       if (p.length) {
         setStep('vista')
@@ -162,6 +177,7 @@ export function ImportStatement({ route }: { route: string }) {
     const det = detectColumns(data)
     if (det && det.confidence >= 0.6 && det.validRows > 0) {
       setMapping(det.mapping)
+      rememberAccount(det.mapping)
       buildPlan(det.mapping, data, acc)
       setStep('vista')
     } else {
@@ -181,6 +197,12 @@ export function ImportStatement({ route }: { route: string }) {
       const hadStatements = transactions.some((t) => t.accountId === accountId && t.bankBalance !== undefined)
       const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null, fingerprint })
       await setSetting('defaultAccountId', accountId)
+      // Se recuerda la cuenta para este banco y este tipo de archivo: la próxima vez se elige sola
+      if (mapping && rows) {
+        const memory = { ...settings.importMemory, [`sig:${headerSignature(rows, mapping.headerRow)}`]: accountId }
+        if (bankId) memory[`bank:${bankId}`] = accountId
+        await setSetting('importMemory', memory)
+      }
       if (res.adjusted && hadStatements) {
         void toast.confirm({
           title: 'El saldo no cuadraba con el del banco',

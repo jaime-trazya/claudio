@@ -184,6 +184,10 @@ export interface Settings {
   accentColor: string
   /** Versión de las categorías y reglas predefinidas ya aplicada */
   defaultsVersion: number
+  /** Importes ocultos («•••») para enseñar la app sin enseñar tu dinero */
+  hideAmounts: boolean
+  /** Cuenta en la que importaste cada tipo de extracto (por banco y por cabecera) */
+  importMemory: Record<string, string>
   /** Bloqueo con Face ID y código de respaldo (ver lib/lock.ts) */
   lockEnabled: boolean
   lockCredentialId: string
@@ -205,6 +209,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ownerName: '',
   accentColor: '',
   defaultsVersion: 1,
+  hideAmounts: false,
+  importMemory: {},
   lockEnabled: false,
   lockCredentialId: '',
   lockPinSalt: '',

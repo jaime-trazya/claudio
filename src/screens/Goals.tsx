@@ -6,7 +6,8 @@ import { Money, Sheet } from '../ui/components'
 import { goalProgress } from '../domain/goals'
 import { db } from '../db/db'
 import { formatMoney, parseAmount } from '../lib/money'
-import { formatShortDate, todayISO } from '../lib/dates'
+import { addMonths, formatShortDate, todayISO } from '../lib/dates'
+import { savingsSuggestion } from '../domain/insights'
 import { uid } from '../lib/text'
 import { CATEGORY_COLORS } from '../ui/iconNames'
 import type { Goal } from '../db/types'
@@ -58,8 +59,9 @@ export function GoalsSection() {
 }
 
 function GoalEditor({ goal, onClose }: { goal: Partial<Goal>; onClose: () => void }) {
-  const { accounts, goals } = useData()
+  const { accounts, goals, statTxs, settings, categoryById } = useData()
   const toast = useToast()
+  const suggestion = savingsSuggestion(statTxs, todayISO(), settings.monthStartDay, categoryById)
   const [name, setName] = useState(goal.name ?? '')
   const [target, setTarget] = useState(goal.target ? (goal.target / 100).toFixed(2).replace('.', ',') : '')
   const [saved, setSaved] = useState(goal.saved ? (goal.saved / 100).toFixed(2).replace('.', ',') : '')
@@ -141,6 +143,31 @@ function GoalEditor({ goal, onClose }: { goal: Partial<Goal>; onClose: () => voi
         <span>Para cuándo (opcional)</span>
         <input className="input" type="date" value={deadline} min={todayISO()} onChange={(e) => setDeadline(e.target.value)} />
       </label>
+      {suggestion !== null && targetCents > 0 && (() => {
+        // Lo que falta, con lo que suele sobrarte al mes: cuándo llegarías sin apretarte
+        const already = accountId ? 0 : Math.abs(parseAmount(saved) ?? 0)
+        const months = Math.max(1, Math.ceil(Math.max(0, targetCents - already) / suggestion))
+        const date = addMonths(todayISO(), months)
+        return (
+          <div className="notice accent" role="status">
+            <div className="grow">
+              <strong>
+                Te suelen sobrar unos <Money cents={suggestion} plain /> al mes
+              </strong>
+              <p>
+                Apartándolos, llegarías en {months === 1 ? 'un mes' : `${months} meses`} ({formatShortDate(date)}). Es la mediana de lo que te ha sobrado los últimos 3 meses.
+              </p>
+              {deadline !== date && (
+                <div className="notice-actions">
+                  <button className="btn small" type="button" onClick={() => setDeadline(date)}>
+                    Ponerle esa fecha
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
       <div className="field">
         <span className="field-label">Color</span>
         <div className="swatches">
