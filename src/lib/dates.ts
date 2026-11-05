@@ -23,7 +23,8 @@ export function isValidISO(s: unknown): s is ISODate {
 }
 
 function valid(y: number, m: number, d: number): ISODate | null {
-  if (y < 100) y += y > 70 ? 1900 : 2000
+  // Año de dos cifras: siglo actual salvo que quede más de 10 años en el futuro («70» es 1970, no 2070)
+  if (y < 100) y += y <= (new Date().getFullYear() % 100) + 10 ? 2000 : 1900
   if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1970 || y > 2100) return null
   const date = new Date(y, m - 1, d)
   if (date.getMonth() !== m - 1) return null
@@ -60,7 +61,8 @@ export function parseDate(input: unknown): ISODate | null {
   if (typeof input === 'number') return excelSerialToISO(input)
   const s = String(input)
     .trim()
-    .replace(/[,\s]+(a las\s+)?\d{1,2}:\d{2}(:\d{2})?(\s*h)?$/i, '')
+    // Quita la hora, también en formato de 12 horas («3 oct 2026, 1:45 PM», «1:45 p. m.»)
+    .replace(/[,\s]+(a las\s+)?\d{1,2}:\d{2}(:\d{2})?(\s*([ap]\.?\s?m\.?|h))?$/i, '')
   let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T\s].*)?$/)
   if (m) return valid(+m[1], +m[2], +m[3])
   m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/)
@@ -71,7 +73,8 @@ export function parseDate(input: unknown): ISODate | null {
       MONTHS_ES[m[2].toLowerCase().slice(0, 3)]
     if (month) return valid(+m[3], month, +m[1])
   }
-  if (/^\d{5}(\.\d+)?$/.test(s)) return excelSerialToISO(Number(s))
+  // Un texto de cinco cifras no se toma por serial de Excel: suele ser una referencia o un importe.
+  // Las hojas de cálculo ya dan sus fechas como Date (cellDates) o como número.
   return null
 }
 

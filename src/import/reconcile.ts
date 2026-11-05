@@ -33,6 +33,9 @@ export const RECONCILE_DAYS = 3
 /** ¿Puede este movimiento guardado emparejarse con una línea del extracto? */
 export function isReconcilable(tx: Transaction, accountId: string): boolean {
   if (tx.bankDescription) return false // ya conciliado con un extracto
+  // La pata espejo de un traspaso (creada desde el extracto de la cuenta de origen) se concilia con el
+  // extracto de su propia cuenta: si no, al importarlo el traspaso entraría dos veces.
+  if (tx.externalId?.startsWith('espejo-')) return tx.accountId === accountId
   if (tx.source === 'extracto') return false
   if (tx.transferId && tx.accountId !== accountId) return false
   if (tx.accountId === accountId) return tx.status === 'pendiente' || tx.source === 'manual' || tx.source === 'atajo'

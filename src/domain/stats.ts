@@ -29,18 +29,35 @@ export function isRefund(amount: number, categoryId: string | null, categories?:
   return categories.get(categoryId)?.kind === 'gasto'
 }
 
+/** Categoría principal en la que se agrupa una parte (la misma que usa el gráfico por categorías) */
+function topCategoryKey(categoryId: string | null, categories?: Map<string, Category>): string {
+  const cat = categoryId ? categories?.get(categoryId) : undefined
+  return cat ? (cat.parentId ?? cat.id) : (categoryId ?? '__none__')
+}
+
 export function summarize(txs: Transaction[], range: DateRange, categories?: Map<string, Category>): Summary {
   let income = 0
-  let expenses = 0
   let count = 0
+  // Gasto neto por categoría principal: las devoluciones restan del gasto de su categoría
+  const spent = new Map<string, number>()
+  const add = (key: string, v: number) => spent.set(key, (spent.get(key) ?? 0) + v)
   for (const tx of txs) {
     if (!isCountable(tx) || !inRange(tx.date, range)) continue
     count++
     for (const p of parts(tx)) {
-      if (isRefund(p.amount, p.categoryId, categories)) expenses -= p.amount
+      if (isRefund(p.amount, p.categoryId, categories)) add(topCategoryKey(p.categoryId, categories), -p.amount)
       else if (p.amount > 0) income += p.amount
-      else expenses += -p.amount
+      else add(topCategoryKey(p.categoryId, categories), -p.amount)
     }
+  }
+  // Si en una categoría se devuelve más de lo gastado en el periodo (una compra del mes anterior
+  // devuelta este), ese sobrante es dinero que entra: cuenta como ingreso, no como gasto negativo.
+  // Así los gastos nunca salen negativos, la tasa de ahorro no pasa del 100 % y el total de gastos
+  // coincide con la suma del gráfico por categorías. El balance no cambia.
+  let expenses = 0
+  for (const v of spent.values()) {
+    if (v > 0) expenses += v
+    else income += -v
   }
   const balance = income - expenses
   return { income, expenses, balance, savingsRate: income > 0 ? balance / income : null, count }
@@ -150,8 +167,11 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
       if (p.amount < 0) ch.count++
     }
   }
+  // Igual que summarize: una categoría (o subcategoría) con más devoluciones que gasto no aparece
   const list = [...top.values()].filter((t) => t.amount > 0).sort((a, b) => b.amount - a.amount)
-  list.forEach((t) => t.children.sort((a, b) => b.amount - a.amount))
+  list.forEach((t) => {
+    t.children = t.children.filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount)
+  })
   return list
 }
 

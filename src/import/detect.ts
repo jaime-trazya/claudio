@@ -35,7 +35,9 @@ export interface Detection {
   validRows: number
 }
 
-const isDateCell = (c: Cell) => parseDate(c) !== null
+// Las fechas de una hoja de cálculo llegan como Date (cellDates): un número es un importe, aunque
+// esté entre 20000 y 80000 como los seriales de fecha de Excel (30000 € no es el 18 de febrero de 1982)
+const isDateCell = (c: Cell) => typeof c !== 'number' && parseDate(c) !== null
 const isAmountCell = (c: Cell) => c !== null && c !== '' && !(c instanceof Date) && parseAmount(c) !== null && !(typeof c === 'string' && parseDate(c) !== null)
 
 /** Busca la fila de cabecera: la que tenga más palabras clave de columnas. */
@@ -76,6 +78,24 @@ function pickColumn(header: Row, words: string[], taken: Set<number>): number | 
   return best
 }
 
+/** Proporción de filas en las que la columna b se comporta como saldo de la columna a (en cualquier orden de filas) */
+function balanceFit(rows: Row[], a: number, b: number): number {
+  const pairs = rows.map((r) => [parseAmount(r[a]), parseAmount(r[b])] as const).filter(([x, y]) => x !== null && y !== null) as [number, number][]
+  if (pairs.length < 3) return 0
+  // Solo cuentan las filas con importe distinto de cero: con importes a 0 cualquier columna
+  // constante «cuadraría» como saldo (saldo + 0 = saldo)
+  let down = 0
+  let up = 0
+  let n = 0
+  for (let i = 1; i < pairs.length; i++) {
+    if (pairs[i][0] === 0 || pairs[i - 1][0] === 0) continue
+    n++
+    if (pairs[i - 1][1] + pairs[i][0] === pairs[i][1]) down++ // más antiguo arriba
+    if (pairs[i][1] + pairs[i - 1][0] === pairs[i - 1][1]) up++ // más reciente arriba
+  }
+  return n >= 2 ? Math.max(down, up) / n : 0
+}
+
 function columnStats(rows: Row[], col: number) {
   let dates = 0
   let amounts = 0
@@ -110,7 +130,9 @@ export function detectColumns(rows: Row[]): Detection | null {
   if (dateCol !== null) taken.add(dateCol)
   let descCol = headerRow >= 0 ? pickColumn(header, H.desc, taken) : null
   if (descCol !== null) taken.add(descCol)
-  let amountCol = headerRow >= 0 ? pickColumn(header, H.amount, taken) : null
+  // Las demás fechas (p. ej. «Fecha valor») no son importes aunque su cabecera diga «valor»
+  const dateLike = new Set(header.map((c, i) => (score(c, H.date) > 0 ? i : -1)).filter((i) => i >= 0))
+  let amountCol = headerRow >= 0 ? pickColumn(header, H.amount, new Set([...taken, ...dateLike])) : null
   if (amountCol !== null) taken.add(amountCol)
   let debitCol: number | null = null
   let creditCol: number | null = null
@@ -120,7 +142,7 @@ export function detectColumns(rows: Row[]): Detection | null {
     creditCol = pickColumn(header, H.credit, taken)
     if (creditCol !== null) taken.add(creditCol)
   }
-  const balanceCol = headerRow >= 0 ? pickColumn(header, H.balance, taken) : null
+  let balanceCol = headerRow >= 0 ? pickColumn(header, H.balance, taken) : null
   if (balanceCol !== null) taken.add(balanceCol)
 
   // Completar por contenido lo que no se haya encontrado por cabecera
@@ -145,9 +167,21 @@ export function detectColumns(rows: Row[]): Detection | null {
       .map((s, i) => ({ i, s }))
       .filter(({ i, s }) => !taken.has(i) && s.amounts >= Math.max(1, body.length * 0.5))
     if (numeric.length) {
-      // El saldo suele ser la última columna numérica: escogemos la primera
-      amountCol = numeric[0].i
+      // Con dos columnas numéricas, una suele ser el saldo: es la que cuadra fila a fila con la otra
+      // (saldo anterior + importe = saldo). Si ninguna pareja cuadra, la primera (lo más habitual).
+      let pick = { amount: numeric[0].i, balance: null as number | null, fit: 0 }
+      for (const a of numeric)
+        for (const b of numeric) {
+          if (a.i === b.i || balanceCol !== null) continue
+          const fit = balanceFit(body, a.i, b.i)
+          if (fit > pick.fit) pick = { amount: a.i, balance: b.i, fit }
+        }
+      amountCol = pick.amount
       taken.add(amountCol)
+      if (pick.balance !== null && pick.fit >= 0.6) {
+        balanceCol = pick.balance
+        taken.add(balanceCol)
+      }
     }
   }
 

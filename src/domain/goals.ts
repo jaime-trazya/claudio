@@ -15,7 +15,9 @@ export interface GoalProgress {
 
 export function goalProgress(goal: Goal, accounts: Account[], txs: Transaction[], snapshots: Snapshot[], today: ISODate = todayISO()): GoalProgress {
   const acc = goal.accountId ? accounts.find((a) => a.id === goal.accountId) : undefined
-  const saved = acc ? (acc.type === 'inversion' ? investmentValue(acc, snapshots, txs) : accountBalance(acc, txs)) : goal.saved
+  // Con todas las cuentas de inversión: si no, a esta se le atribuirían las aportaciones a las demás
+  const investmentAccounts = accounts.filter((a) => a.type === 'inversion')
+  const saved = acc ? (acc.type === 'inversion' ? investmentValue(acc, snapshots, txs, undefined, investmentAccounts) : accountBalance(acc, txs)) : goal.saved
   const remaining = Math.max(0, goal.target - saved)
   const ratio = goal.target > 0 ? Math.min(1, Math.max(0, saved / goal.target)) : 0
   let monthsLeft: number | null = null

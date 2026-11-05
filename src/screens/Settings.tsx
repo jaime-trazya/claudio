@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight, Download, HardDrive, History, Smartphone, Trash2, Undo2, Upload } from 'lucide-react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listRestorePoints, undoLast } from '../db/history'
+import { isRedoPoint, listRestorePoints, undoLast } from '../db/history'
 import { relativeTime } from '../lib/dates'
 import { useUndo } from '../ui/useUndo'
 import { useData } from '../ui/useData'
@@ -48,7 +48,7 @@ export function SettingsScreen() {
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const [usage, setUsage] = useState<string | null>(null)
   const points = useLiveQuery(() => listRestorePoints(), [])
-  const lastAction = points?.find((p) => p.kind === 'accion')
+  const lastAction = points?.find((p) => p.kind === 'accion' && !isRedoPoint(p))
   const dailyCount = points?.filter((p) => p.kind === 'diaria').length ?? 0
   const undo = useUndo()
 
@@ -75,7 +75,7 @@ export function SettingsScreen() {
           disabled={!lastAction}
           onClick={async () => {
             if (!lastAction) return
-            const ok = await toast.confirm({ title: 'Deshacer lo último', message: `${actionText(lastAction.label)} (${relativeTime(lastAction.createdAt)}). Todo vuelve a como estaba justo antes.`, confirmLabel: 'Deshacer' })
+            const ok = await toast.confirm({ title: 'Deshacer lo último', message: `${actionText(lastAction.label)} (${relativeTime(lastAction.createdAt)}). Todo vuelve a como estaba justo antes: también se pierde lo que hayas cambiado después. Si te equivocas, puedes rehacerlo desde el historial.`, confirmLabel: 'Deshacer' })
             if (!ok) return
             const l = await undoLast()
             toast.show(l ? 'Hecho: todo está como antes' : 'No hay nada que deshacer')
@@ -114,8 +114,8 @@ export function SettingsScreen() {
               typeToConfirm: 'BORRAR',
             })
             if (!second) return
-            await wipeAll(true)
-            toast.show('Datos eliminados', { action: undo })
+            const saved = await wipeAll(true)
+            toast.show('Datos eliminados', saved ? { action: undo } : undefined)
           }}
         >
           <Trash2 size={20} />

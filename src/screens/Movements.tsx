@@ -174,7 +174,7 @@ export function Movements({ route }: { route: string }) {
                   <Money cents={-summary.expenses} plain />
                 </div>
                 <div className="kpi" style={{ gridColumn: '1 / -1', borderRight: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <div className="card-label">Balance</div>
+                  <div className="card-label">Ahorro (ingresos − gastos)</div>
                   <Money cents={summary.balance} sign />
                 </div>
               </>
@@ -182,7 +182,7 @@ export function Movements({ route }: { route: string }) {
           </div>
           <p className="meta" style={{ padding: '0 var(--pad) 10px' }}>
             {list.length} movimiento{list.length === 1 ? '' : 's'}
-            {filteredAccount ? '' : ' · sin contar traspasos entre tus cuentas ni aportaciones'}
+            {filteredAccount ? '' : ' · sin contar traspasos entre tus cuentas ni aportaciones. Es lo que has ahorrado, no lo que tienes: tu dinero actual está en Inicio y en Patrimonio'}
           </p>
         </section>
       )}

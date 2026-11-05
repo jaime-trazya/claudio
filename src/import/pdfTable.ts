@@ -25,6 +25,8 @@ export interface PdfTable {
 
 interface Column {
   x: number
+  /** Borde derecho de la cabecera, si pdf.js dio el ancho del texto */
+  right?: number
   label: string
 }
 
@@ -57,10 +59,12 @@ function headerColumns(lines: PdfLine[], i: number): Column[] | null {
   const cols: Column[] = []
   for (const it of frags) {
     const c = cols.find((c) => Math.abs(c.x - it.x) <= 12)
+    const right = it.w !== undefined ? it.x + it.w : undefined
     if (c) {
       c.label = `${c.label} ${it.str}`.trim()
       c.x = Math.min(c.x, it.x)
-    } else cols.push({ x: it.x, label: it.str })
+      if (right !== undefined) c.right = Math.max(c.right ?? right, right)
+    } else cols.push({ x: it.x, label: it.str, ...(right !== undefined ? { right } : {}) })
   }
   cols.sort((a, b) => a.x - b.x)
   return cols.map((c) => ({ ...c, label: c.label.replace(/\s*\/\s*/g, ' / ').replace(/\s+/g, ' ') }))
@@ -68,9 +72,25 @@ function headerColumns(lines: PdfLine[], i: number): Column[] | null {
 
 const signature = (cols: Column[]) => cols.map((c) => normalize(c.label)).join('|')
 
-function columnOf(cols: Column[], x: number): number {
+function columnOf(cols: Column[], it: PdfItem): number {
+  // Un importe suele ir alineado a la derecha bajo su cabecera: un número ancho («12.345,67») bajo
+  // una cabecera corta («Saldo») empieza bastante más a la izquierda que ella. Con los anchos de
+  // pdf.js se elige la columna con la que más se solapa, en vez de comparar solo el borde izquierdo.
+  if (it.w !== undefined && AMOUNT_RE.test(it.str) && cols.every((c) => c.right !== undefined)) {
+    const end = it.x + it.w
+    let best = -1
+    let bestOverlap = 0
+    cols.forEach((c, i) => {
+      const overlap = Math.min(end, c.right!) - Math.max(it.x, c.x)
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap
+        best = i
+      }
+    })
+    if (best >= 0) return best
+  }
   let idx = 0
-  for (let c = 0; c < cols.length; c++) if (cols[c].x <= x + 10) idx = c
+  for (let c = 0; c < cols.length; c++) if (cols[c].x <= it.x + 10) idx = c
   return idx
 }
 
@@ -177,7 +197,7 @@ function buildRows(lines: PdfLine[], region: number[], cols: Column[]): Row[] {
     }
     for (const l of members) {
       for (const it of l.items) {
-        const c = columnOf(cols, it.x)
+        const c = columnOf(cols, it)
         if (c === dateCol) {
           // "18 jul 2025 Operar": la fecha se queda, el resto pasa a la columna siguiente
           const m = it.str.match(DATE_START)

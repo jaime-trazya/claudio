@@ -9,7 +9,6 @@ import { formatMoney, parseAmount } from '../lib/money'
 import { isValidISO, todayISO } from '../lib/dates'
 import { applyRuleEverywhere, createTransfer, deleteTransaction, newTransaction, restoreTransactions, saveTransaction } from '../db/actions'
 import { merchantKey } from '../lib/text'
-import { db } from '../db/db'
 
 type Mode = 'gasto' | 'ingreso' | 'aportacion' | 'transferencia'
 
@@ -64,7 +63,7 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
     validDate &&
     !!accountId &&
     (mode === 'transferencia' && isNew ? !!toAccountId && toAccountId !== accountId : description.trim().length > 0) &&
-    (splits.length === 0 || splitRemaining === 0)
+    (splits.length === 0 || (mode !== 'gasto' && mode !== 'ingreso') || splitRemaining === 0)
 
   async function save() {
     if (!canSave) return
@@ -79,15 +78,19 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       onClose()
       return
     }
-    const splitList: Split[] | undefined = splits.length
-      ? splits.map((s) => ({ categoryId: s.categoryId, amount: (mode === 'ingreso' ? 1 : -1) * Math.abs(parseAmount(s.text) ?? 0) }))
-      : undefined
+    const amount = isPairedTransfer ? (tx!.amount < 0 ? -absAmount : absAmount) : signed
+    // Las partes llevan el mismo signo que el movimiento (así siempre suman su importe). Solo los
+    // gastos e ingresos se dividen en categorías: un traspaso o una aportación no tienen partes.
+    const splitList: Split[] | undefined =
+      splits.length && (mode === 'gasto' || mode === 'ingreso')
+        ? splits.map((s) => ({ categoryId: s.categoryId, amount: Math.sign(amount) * Math.abs(parseAmount(s.text) ?? 0) }))
+        : undefined
     const kind: TxKind = mode as TxKind
     const next: Transaction = {
       ...(tx ?? newTransaction({ accountId, date, amount: signed, description })),
       accountId,
       date,
-      amount: isPairedTransfer ? (tx!.amount < 0 ? -absAmount : absAmount) : signed,
+      amount,
       description: description.trim(),
       categoryId: splitList ? null : mode === 'aportacion' && !categoryId ? 'cat-inversion' : mode === 'transferencia' ? 'cat-transferencia' : categoryId,
       kind: isPairedTransfer ? tx!.kind : kind,
@@ -97,15 +100,8 @@ export function TxEditor({ tx, defaults, onClose }: { tx?: Transaction; defaults
       tags: tagList,
       splits: splitList,
     }
-    await saveTransaction(next)
-    // La otra pata de la transferencia se mantiene con el mismo importe y fecha
-    if (isPairedTransfer) {
-      await db.transactions
-        .where('transferId')
-        .equals(tx!.transferId!)
-        .filter((t) => t.id !== tx!.id)
-        .modify({ amount: -next.amount, date, description: next.description, updatedAt: Date.now() })
-    }
+    // La otra pata de la transferencia se mantiene con el mismo importe y fecha (en la misma escritura)
+    await saveTransaction(next, { syncTransfer: isPairedTransfer })
     onClose()
     const finalCategory = next.categoryId
     const changedCategory = tx && !splitList && finalCategory && (finalCategory !== tx.categoryId || next.kind !== tx.kind) && !isPairedTransfer

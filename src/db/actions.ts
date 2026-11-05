@@ -8,7 +8,7 @@ import type { TRStatement } from '../import/tradeRepublic'
 import { normalize, uid } from '../lib/text'
 import { bankOrder } from '../domain/stats'
 import { getSettings, setSetting } from './settings'
-import { isValidISO, toISO, todayISO } from '../lib/dates'
+import { daysBetween, isValidISO, toISO, todayISO } from '../lib/dates'
 import { reseed } from './db'
 import { createRestorePoint } from './history'
 
@@ -31,11 +31,33 @@ export function newTransaction(p: Partial<Transaction> & Pick<Transaction, 'acco
 
 export class InvalidTransactionError extends Error {}
 
-export async function saveTransaction(tx: Transaction) {
+/** Quita los datos del extracto (saldo del banco y su orden), que solo valen en la cuenta de la que vienen */
+function withoutBankAnchor(tx: Transaction): Transaction {
+  const { bankBalance: _b, bankEffDate: _e, bankSeq: _s, bankDate: _d, ...rest } = tx
+  return rest
+}
+
+/**
+ * Guarda un movimiento. Si cambia de cuenta, pierde el saldo del extracto de la cuenta anterior:
+ * si no, la cuenta nueva tomaría ese saldo como su saldo real.
+ * Con syncTransfer, la otra pata de la transferencia se actualiza en la misma transacción.
+ */
+export async function saveTransaction(tx: Transaction, opts: { syncTransfer?: boolean } = {}) {
   // Nunca se guarda un movimiento sin fecha válida: rompería las listas y los cálculos por fecha
   if (!isValidISO(tx.date)) throw new InvalidTransactionError('El movimiento necesita una fecha válida')
-  if (!Number.isFinite(tx.amount)) throw new InvalidTransactionError('El importe no es válido')
-  await db.transactions.put({ ...tx, updatedAt: now() })
+  if (!Number.isFinite(tx.amount) || !Number.isInteger(tx.amount)) throw new InvalidTransactionError('El importe no es válido')
+  await db.transaction('rw', db.transactions, async () => {
+    const prev = await db.transactions.get(tx.id)
+    const next = prev && prev.accountId !== tx.accountId ? withoutBankAnchor(tx) : tx
+    await db.transactions.put({ ...next, updatedAt: now() })
+    if (opts.syncTransfer && next.transferId) {
+      await db.transactions
+        .where('transferId')
+        .equals(next.transferId)
+        .filter((t) => t.id !== next.id)
+        .modify({ amount: -next.amount, date: next.date, description: next.description, updatedAt: now() })
+    }
+  })
 }
 
 /**
@@ -154,7 +176,10 @@ export async function applyStatementImport({ rows, accountId, fileName, category
   const seqBase = Math.floor(Date.now() / 1000) * 100000
   const bankFields = (i: number) =>
     rows[i].movement.balance !== undefined ? { bankBalance: rows[i].movement.balance, bankEffDate: order[i].effDate, bankSeq: seqBase + order[i].seq } : {}
-  await db.transaction('rw', db.transactions, db.imports, async () => {
+  // Movimientos, registro de la importación y ajuste del saldo, todo o nada: si iOS cierra la app
+  // a mitad, no queda un extracto guardado sin su saldo cuadrado.
+  let adjusted = 0
+  await db.transaction('rw', db.transactions, db.imports, db.accounts, async () => {
     for (const [i, r] of rows.entries()) {
       if (!r.include) {
         skipped++
@@ -205,8 +230,8 @@ export async function applyStatementImport({ rows, accountId, fileName, category
       added++
     }
     await db.imports.add({ id: importId, type: 'extracto', fileName, accountId, added, reconciled, skipped, fingerprint, createdAt: now() })
+    if (bankBalance) adjusted = await matchBankBalance(accountId, bankBalance)
   })
-  const adjusted = bankBalance ? await matchBankBalance(accountId, bankBalance) : 0
   return { added, reconciled, skipped, adjusted }
 }
 
@@ -293,11 +318,34 @@ export async function saveSnapshot(accountId: string, st: Pick<TRStatement, 'dat
   return { saved: true, snapshot }
 }
 
+/**
+ * Borra la cuenta con sus movimientos y fotos de cartera, y suelta todo lo que apuntaba a ella:
+ * objetivos (pasan a ahorro manual), cuentas de inversión que la usaban como efectivo, la cuenta
+ * por defecto y la otra pata de sus traspasos (que se queda en su cuenta, ya sin pareja).
+ */
 export async function deleteAccount(id: string) {
   await createRestorePoint(`Antes de borrar la cuenta «${(await db.accounts.get(id))?.name ?? ''}»`)
-  await db.transaction('rw', db.accounts, db.transactions, db.snapshots, async () => {
+  await db.transaction('rw', [db.accounts, db.transactions, db.snapshots, db.goals, db.settings], async () => {
+    const own = await db.transactions.where('accountId').equals(id).toArray()
+    const transferIds = own.map((t) => t.transferId).filter((x): x is string => !!x)
+    if (transferIds.length)
+      await db.transactions
+        .where('transferId')
+        .anyOf(transferIds)
+        .filter((t) => t.accountId !== id)
+        .modify((t) => {
+          delete t.transferId
+          t.updatedAt = now()
+        })
     await db.transactions.where('accountId').equals(id).delete()
     await db.snapshots.where('accountId').equals(id).delete()
+    await db.goals.where('accountId').equals(id).modify((g) => {
+      delete g.accountId
+    })
+    await db.accounts.filter((a) => a.cashAccountId === id).modify((a) => {
+      delete a.cashAccountId
+    })
+    if ((await getSettings()).defaultAccountId === id) await setSetting('defaultAccountId', null)
     await db.accounts.delete(id)
   })
 }
@@ -325,12 +373,14 @@ export async function deleteCategory(id: string) {
  * Borra todos los datos y deja la app como recién instalada.
  * Con keepHistory (por defecto) guarda antes un punto para poder deshacerlo; si no, borra también el historial.
  */
-export async function wipeAll(keepHistory = true) {
-  if (keepHistory) await createRestorePoint('Antes de borrar todos los datos')
+export async function wipeAll(keepHistory = true): Promise<boolean> {
+  // Sin datos no se guarda punto: entonces no hay nada que deshacer (y deshacer no debe tocar otro punto)
+  const saved = keepHistory ? await createRestorePoint('Antes de borrar todos los datos') : null
   await db.transaction('rw', db.tables, async () => {
     for (const t of db.tables) if (keepHistory ? t.name !== 'restorePoints' : true) await t.clear()
   })
   await reseed()
+  return !!saved
 }
 
 export const RULES_FILE_TYPE = 'claudio-reglas'
@@ -362,25 +412,28 @@ export async function importRules(data: unknown): Promise<{ added: number; skipp
   let added = 0
   let skipped = 0
   let changed = 0
-  for (const r of file.rules) {
-    if (!r || typeof r.keyword !== 'string' || typeof r.categoryId !== 'string' || !cats.has(r.categoryId)) {
-      skipped++
-      continue
-    }
-    const kind = r.kind === 'aportacion' || r.kind === 'transferencia' || r.kind === 'ingreso' || r.kind === 'gasto' ? r.kind : undefined
-    changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined, false)
-    added++
-  }
-  // Perfil: presupuestos (solo para categorías que aún no tienen) y tu nombre (si no lo habías puesto)
   let budgets = 0
-  for (const b of file.budgets ?? []) {
-    if (!b || typeof b.categoryId !== 'string' || !cats.has(b.categoryId) || !(b.amount > 0)) continue
-    if (await db.budgets.where('categoryId').equals(b.categoryId).count()) continue
-    await db.budgets.add({ id: uid(), categoryId: b.categoryId, amount: Math.round(b.amount) })
-    budgets++
-  }
-  const owner = file.settings?.ownerName?.trim()
-  if (owner && !(await getSettings()).ownerName) await setSetting('ownerName', owner)
+  // Todo el archivo en una sola transacción: o se aplica entero o no se aplica nada
+  await db.transaction('rw', [db.rules, db.transactions, db.budgets, db.settings], async () => {
+    for (const r of file.rules!) {
+      if (!r || typeof r.keyword !== 'string' || typeof r.categoryId !== 'string' || !cats.has(r.categoryId)) {
+        skipped++
+        continue
+      }
+      const kind = r.kind === 'aportacion' || r.kind === 'transferencia' || r.kind === 'ingreso' || r.kind === 'gasto' ? r.kind : undefined
+      changed += await applyRuleEverywhere(r.keyword, r.categoryId, kind === 'aportacion' || kind === 'transferencia' ? kind : undefined, false)
+      added++
+    }
+    // Perfil: presupuestos (solo para categorías que aún no tienen) y tu nombre (si no lo habías puesto)
+    for (const b of file.budgets ?? []) {
+      if (!b || typeof b.categoryId !== 'string' || !cats.has(b.categoryId) || !(typeof b.amount === 'number' && b.amount > 0 && Number.isFinite(b.amount))) continue
+      if (await db.budgets.where('categoryId').equals(b.categoryId).count()) continue
+      await db.budgets.add({ id: uid(), categoryId: b.categoryId, amount: Math.round(b.amount) })
+      budgets++
+    }
+    const owner = typeof file.settings?.ownerName === 'string' ? file.settings.ownerName.trim() : ''
+    if (owner && !(await getSettings()).ownerName) await setSetting('ownerName', owner)
+  })
   return { added, skipped, changed, budgets }
 }
 
@@ -391,24 +444,47 @@ export const SAVINGS_TRANSFER = /cuenta remunerada|cuenta de ahorro|\bahorros?\b
  * Crea en la cuenta de destino la otra pata de los traspasos de la cuenta de origen
  * (p. ej. los envíos a la Cuenta Remunerada de Revolut) y los enlaza. No duplica si ya existen.
  */
+export const MIRROR_PREFIX = 'espejo-'
+
+/**
+ * Crea en la cuenta de destino la otra pata de los traspasos de la cuenta de origen
+ * (p. ej. los envíos a la Cuenta Remunerada de Revolut) y los enlaza. No duplica:
+ * - se salta los que ya tienen pareja (transferId), creados a mano o en una pasada anterior;
+ * - si la cuenta de destino ya tiene el movimiento contrario sin pareja (mismo importe, ±3 días,
+ *   p. ej. porque también se importó su extracto), lo enlaza en lugar de crear otro.
+ * Devuelve cuántos traspasos ha enlazado (nuevos o existentes).
+ */
 export async function mirrorTransfers(fromId: string, toId: string, pattern: RegExp = SAVINGS_TRANSFER): Promise<number> {
-  const from = await db.transactions.where('accountId').equals(fromId).toArray()
-  const existing = new Set((await db.transactions.where('accountId').equals(toId).toArray()).map((t) => t.externalId).filter(Boolean))
-  const legs: Transaction[] = []
-  const updates: Transaction[] = []
-  for (const t of from) {
-    if (!pattern.test(t.bankDescription ?? t.description)) continue
-    const ext = `espejo-${t.id}`
-    if (existing.has(ext)) continue
-    const transferId = t.transferId ?? uid()
-    legs.push(newTransaction({ accountId: toId, date: t.date, amount: -t.amount, description: t.description, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, externalId: ext, source: 'extracto' }))
-    updates.push({ ...t, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, updatedAt: now() })
-  }
-  await db.transaction('rw', db.transactions, async () => {
+  return db.transaction('rw', db.transactions, async () => {
+    const from = await db.transactions.where('accountId').equals(fromId).toArray()
+    const dest = await db.transactions.where('accountId').equals(toId).toArray()
+    const mirrored = new Set(dest.map((t) => t.externalId).filter(Boolean))
+    const free = dest.filter((t) => !t.transferId)
+    const taken = new Set<string>()
+    const legs: Transaction[] = []
+    const updates: Transaction[] = []
+    let linked = 0
+    for (const t of from) {
+      if (t.transferId || !pattern.test(t.bankDescription ?? t.description)) continue
+      const ext = `${MIRROR_PREFIX}${t.id}`
+      if (mirrored.has(ext)) continue
+      const transferId = uid()
+      const match = free
+        .filter((d) => !taken.has(d.id) && d.amount === -t.amount && Math.abs(daysBetween(d.date, t.date)) <= 3)
+        .sort((a, b) => Math.abs(daysBetween(a.date, t.date)) - Math.abs(daysBetween(b.date, t.date)))[0]
+      if (match) {
+        taken.add(match.id)
+        updates.push({ ...match, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, updatedAt: now() })
+      } else {
+        legs.push(newTransaction({ accountId: toId, date: t.date, amount: -t.amount, description: t.description, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, externalId: ext, source: 'extracto' }))
+      }
+      updates.push({ ...t, kind: 'transferencia', categoryId: 'cat-transferencia', transferId, updatedAt: now() })
+      linked++
+    }
     if (legs.length) await db.transactions.bulkAdd(legs)
     if (updates.length) await db.transactions.bulkPut(updates)
+    return linked
   })
-  return legs.length
 }
 
 /**

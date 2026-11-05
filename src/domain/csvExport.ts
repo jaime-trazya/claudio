@@ -3,7 +3,10 @@ import { formatDMY } from '../lib/dates'
 
 const KIND: Record<Transaction['kind'], string> = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia', aportacion: 'Aportación' }
 
-const esc = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+const esc = (v: string) => (/[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+// Un texto que empieza por = + - @ (p. ej. un concepto de un extracto) Excel y Numbers lo ejecutan
+// como fórmula al abrir el CSV: se le antepone un apóstrofo para que se vea como texto.
+const text = (v: string) => esc(/^[=+\-@\t\r]/.test(v) ? `'${v}` : v)
 const num = (cents: number) => (cents / 100).toFixed(2).replace('.', ',')
 
 /** CSV con ";" y coma decimal, listo para abrir en Numbers o Excel en español */
@@ -25,19 +28,17 @@ export function transactionsToCSV(txs: Transaction[], accounts: Account[], categ
     for (const r of rows) {
       lines.push(
         [
-          formatDMY(t.date),
-          acc.get(t.accountId) ?? '',
-          t.description,
-          num(r.amount),
-          catName(r.categoryId),
-          KIND[t.kind] + (t.excluded ? ' (no cuenta)' : ''),
-          t.status === 'pendiente' ? 'Pendiente' : 'Confirmado',
-          t.notes ?? '',
-          t.tags.join(', '),
-          t.bankDescription ?? '',
-        ]
-          .map((v) => esc(String(v)))
-          .join(';'),
+          esc(formatDMY(t.date)),
+          text(acc.get(t.accountId) ?? ''),
+          text(t.description),
+          esc(num(r.amount)),
+          text(catName(r.categoryId)),
+          esc(KIND[t.kind] + (t.excluded ? ' (no cuenta)' : '')),
+          esc(t.status === 'pendiente' ? 'Pendiente' : 'Confirmado'),
+          text(t.notes ?? ''),
+          text(t.tags.join(', ')),
+          text(t.bankDescription ?? ''),
+        ].join(';'),
       )
     }
   }

@@ -11,6 +11,7 @@ import { isIOS, isStandalone } from '../ui/files'
 import { accountingMonth, daysBetween, formatShortDate, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
 import { formatMoney, formatRate } from '../lib/money'
 import { comparableRange, summarize } from '../domain/stats'
+import { netWorth } from '../domain/investments'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
 import { confirmTransactions } from '../db/actions'
@@ -29,7 +30,7 @@ function deltaWords(cur: number, prev: number, currency: string, lowerIsBetter =
 }
 
 export function Home() {
-  const { accounts, transactions, statTxs, budgets, categories, settings, categoryById } = useData()
+  const { accounts, transactions, statTxs, budgets, categories, settings, categoryById, snapshots } = useData()
   const { openTx, openAccount } = useEditor()
   const toast = useToast()
   const shortcut = useShortcutImport()
@@ -107,7 +108,10 @@ export function Home() {
     )
   }
 
-  const spentRatio = budgetTotal ? cur.expenses / budgetTotal : 0
+  // Solo lo gastado en las categorías con presupuesto (el alquiler sin presupuesto no llena la barra)
+  const budgetSpent = statuses.reduce((s, b) => s + b.spent, 0)
+  const spentRatio = budgetTotal ? budgetSpent / budgetTotal : 0
+  const nw = netWorth(accounts, transactions, snapshots)
   const dayRatio = Math.min(1, dayN / totalDays)
   const incomeD = deltaWords(cur.income, prev.income, currency)
   const expD = deltaWords(cur.expenses, prev.expenses, currency, true)
@@ -129,6 +133,26 @@ export function Home() {
 
       {inSafari && <SafariNotice />}
 
+      {/* Lo primero al entrar: el dinero que tienes ahora, y justo debajo lo gastado este mes */}
+      <a className="card hero-money" href="#/patrimonio" aria-label={`Tienes ${formatMoney(nw.cash, { currency })} en tus cuentas. Ver patrimonio`}>
+        <div className="card-label">Tienes ahora</div>
+        <Money cents={nw.cash} className="hero" plain />
+        <div className="hero-money-foot">
+          {hasInvestment ? (
+            <>
+              <span>
+                Inversiones <Money cents={nw.investments} plain />
+              </span>
+              <span>
+                Patrimonio <Money cents={nw.total} plain />
+              </span>
+            </>
+          ) : (
+            <span>En tus cuentas, con el saldo del último extracto</span>
+          )}
+        </div>
+      </a>
+
       <section className="card hero-month" aria-label="Resumen del mes">
         <div className="figure-row">
           <div>
@@ -137,8 +161,8 @@ export function Home() {
           </div>
           {budgetTotal > 0 && (
             <div className="right">
-              <div className="card-label">Presupuesto</div>
-              <Money cents={budgetTotal} plain className="mid" />
+              <div className="card-label">Presupuestado</div>
+              <Money cents={budgetSpent} plain className="mid" /> <span className="meta">de</span> <Money cents={budgetTotal} plain className="mid" />
             </div>
           )}
         </div>
@@ -149,7 +173,7 @@ export function Home() {
               <span className="marker" style={{ left: `calc(${dayRatio * 100}% - 1px)` }} title="Hoy" />
             </div>
             <div className="plan-caption">
-              <span>{Math.round(spentRatio * 100)} % gastado</span>
+              <span>{Math.round(spentRatio * 100)} % del presupuesto</span>
               <span>{spentRatio > dayRatio + 0.05 ? 'Vas por delante del calendario' : 'Al ritmo del mes'}</span>
             </div>
           </div>
@@ -170,7 +194,7 @@ export function Home() {
             <div className="meta" style={{ color: expD.tone || undefined }}>{cur.expenses || prev.expenses ? expD.text : '—'}</div>
           </div>
           <div>
-            <div className="meta">Balance</div>
+            <div className="meta">Ahorro</div>
             <Money cents={cur.balance} sign />
             <div className="meta">{cur.savingsRate === null ? 'Sin ingresos aún' : cur.savingsRate < 0 ? 'Gastas más de lo que entra' : `Ahorras el ${formatRate(cur.savingsRate)}`}</div>
           </div>

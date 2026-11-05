@@ -8,6 +8,8 @@ export interface PdfItem {
   x: number
   y: number
   page: number
+  /** Ancho del texto (pdf.js lo da); sirve para alinear importes a la derecha con su columna */
+  w?: number
 }
 
 export interface PdfLine {
@@ -20,6 +22,7 @@ export interface PdfLine {
 interface TextItemLike {
   str: string
   transform: number[]
+  width?: number
 }
 
 interface PdfjsLike {
@@ -44,7 +47,7 @@ export async function extractPdfItems(data: ArrayBuffer | Uint8Array, pdfjs: Pdf
       const content = await page.getTextContent()
       for (const i of content.items as TextItemLike[]) {
         if (typeof i.str !== 'string' || !i.str.trim()) continue
-        out.push({ str: i.str.trim(), x: i.transform[4], y: i.transform[5], page: p })
+        out.push({ str: i.str.trim(), x: i.transform[4], y: i.transform[5], page: p, ...(typeof i.width === 'number' && i.width > 0 ? { w: i.width } : {}) })
       }
     }
   } finally {
@@ -83,8 +86,11 @@ export async function extractPdfLines(data: ArrayBuffer | Uint8Array, pdfjs: Pdf
 }
 
 async function browserPdfjs(): Promise<PdfjsLike> {
-  const pdfjs = await import('pdfjs-dist')
-  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  // Versión «legacy»: la normal de pdf.js 6 usa funciones de JavaScript muy recientes
+  // (Uint8Array.prototype.toHex) que no tienen los iPhone sin la última versión de iOS, y entonces
+  // ningún PDF se puede abrir. La legacy trae esas funciones incluidas. Es la misma que usan los tests.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const worker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
   return pdfjs as unknown as PdfjsLike
 }

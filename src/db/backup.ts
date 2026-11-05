@@ -43,7 +43,33 @@ export function validateBackup(data: unknown): Backup {
     }
   }
   if (typeof b.schemaVersion === 'number' && b.schemaVersion > 1000) throw new BackupError('Versión de copia desconocida.')
+  checkRecords(tables)
   return b as Backup
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+const isCents = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && Math.abs(v) < 1e13
+const KINDS = new Set(['gasto', 'ingreso', 'transferencia', 'aportacion'])
+
+/**
+ * Comprueba los campos de los que dependen los saldos y las listas. Un movimiento con el importe en
+ * texto ("5") sumaría concatenando ("5010005 €") y una fecha rota descuadraría todos los meses:
+ * mejor rechazar la copia entera que restaurarla a medias o con datos absurdos.
+ */
+function checkRecords(tables: Record<string, unknown>) {
+  const fail = (t: string) => {
+    throw new BackupError(`La tabla «${t}» de la copia tiene datos dañados. No se ha tocado nada.`)
+  }
+  const accounts = (tables.accounts ?? []) as Record<string, unknown>[]
+  for (const a of accounts) if (typeof a.name !== 'string' || !isCents(a.initialBalance ?? 0)) fail('accounts')
+  for (const t of (tables.transactions ?? []) as Record<string, unknown>[]) {
+    if (!isCents(t.amount) || typeof t.date !== 'string' || !ISO_DATE.test(t.date) || typeof t.accountId !== 'string') fail('transactions')
+    if (t.kind !== undefined && !KINDS.has(t.kind as string)) fail('transactions')
+    if (t.tags !== undefined && !(Array.isArray(t.tags) && t.tags.every((x) => typeof x === 'string'))) fail('transactions')
+    if (t.splits !== undefined && t.splits !== null && !(Array.isArray(t.splits) && t.splits.every((s) => s && typeof s === 'object' && isCents((s as Record<string, unknown>).amount)))) fail('transactions')
+    if (t.bankBalance !== undefined && !isCents(t.bankBalance)) fail('transactions')
+  }
+  for (const b of (tables.budgets ?? []) as Record<string, unknown>[]) if (!isCents(b.amount)) fail('budgets')
 }
 
 /** Resumen de lo que trae una copia, para enseñarlo antes de restaurar */
@@ -63,11 +89,11 @@ export async function restoreBackup(data: unknown, database: FinanzasDB = db): P
       await database.table(t).clear()
       if (rows.length) await database.table(t).bulkAdd(rows)
     }
-  })
-  // Normaliza registros de copias antiguas (mismos arreglos que la migración v2)
-  await database.transactions.toCollection().modify((t) => {
-    if (!Array.isArray(t.tags)) t.tags = []
-    if (!t.status) t.status = 'confirmado'
+    // Normaliza registros de copias antiguas (mismos arreglos que la migración v2), en la misma transacción
+    await database.transactions.toCollection().modify((t) => {
+      if (!Array.isArray(t.tags)) t.tags = []
+      if (!t.status) t.status = 'confirmado'
+    })
   })
   return { transactions: backup.tables.transactions?.length ?? 0 }
 }

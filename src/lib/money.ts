@@ -25,13 +25,13 @@ export function parseAmount(input: unknown): Cents | null {
     negative = true
     s = s.slice(1, -1)
   }
-  // Signo menos final: 12,50-
-  if (/-\s*$/.test(s) && !/^-/.test(s)) {
-    negative = true
-    s = s.replace(/-\s*$/, '')
-  }
-  // Quita moneda y espacios (incluidos espacios duros)
+  // Quita moneda y espacios (incluidos espacios duros) antes de mirar el signo final: «12,50- €»
   s = s.replace(/eur(os)?|€|\$|usd|\s|\u00a0|\u202f/gi, '')
+  // Signo menos final, también tipográfico: 12,50- / 12,50−
+  if (/[-−–]$/.test(s) && !/^[-−–]/.test(s)) {
+    negative = true
+    s = s.slice(0, -1)
+  }
   if (/^[-−–]/.test(s)) {
     negative = !negative
     s = s.slice(1)

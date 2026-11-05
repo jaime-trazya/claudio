@@ -4,14 +4,15 @@ import { isAdjustment } from './stats'
 
 export const EXTERNAL_IN = 'cat-entrada-externa'
 export const EXTERNAL_OUT = 'cat-salida-externa'
-export const PAIR_DAYS = 4
+export const PAIR_DAYS = 7
 
 const candidate = (t: Transaction) => !t.transferId && !t.excluded && !isAdjustment(t) && (t.kind === 'transferencia' || t.kind === 'aportacion')
 
 /**
  * Empareja traspasos entre tus cuentas que vienen de extractos distintos
  * (el cargo "Revolut**…" de CaixaBank con la recarga del mismo importe en Revolut).
- * Mismo importe con signo contrario, cuentas distintas y hasta 4 días de diferencia.
+ * Mismo importe con signo contrario, cuentas distintas y hasta una semana de diferencia
+ * (una transferencia normal hecha en viernes puede tardar hasta el martes, y más con festivos).
  * Devuelve los ids de los traspasos que tienen pareja.
  */
 export function pairTransfers(txs: Transaction[], days = PAIR_DAYS): Set<string> {

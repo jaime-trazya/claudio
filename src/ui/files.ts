@@ -15,6 +15,18 @@ export function pickFile(accept: string): Promise<File | null> {
     }
     input.addEventListener('change', () => finish(input.files?.[0] ?? null))
     input.addEventListener('cancel', () => finish(null))
+    // Safari de iOS no siempre avisa al cancelar: cuando la app vuelve a tener el foco sin archivo,
+    // se espera un poco (el "change" puede llegar justo después) y se da por cancelado.
+    const onReturn = () => {
+      if (document.visibilityState === 'hidden') return
+      window.removeEventListener('focus', onReturn)
+      document.removeEventListener('visibilitychange', onReturn)
+      window.setTimeout(() => finish(input.files?.[0] ?? null), 1500)
+    }
+    window.setTimeout(() => {
+      window.addEventListener('focus', onReturn)
+      document.addEventListener('visibilitychange', onReturn)
+    }, 300)
     document.body.appendChild(input)
     input.click()
   })

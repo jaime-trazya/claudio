@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { formatMoney, splitMoney } from '../lib/money'
 import type { Category } from '../db/types'
@@ -47,29 +48,49 @@ interface SheetProps {
   headerAction?: ReactNode
 }
 
+// Hojas abiertas, de abajo arriba. La página no se desplaza mientras haya alguna abierta y Escape
+// cierra solo la de arriba. Antes cada hoja guardaba y restauraba el bloqueo por su cuenta: con una
+// hoja encima de otra (elegir categoría al editar un movimiento) la página se quedaba bloqueada.
+const openSheets: symbol[] = []
+function syncScrollLock() {
+  document.body.style.overflow = openSheets.length ? 'hidden' : ''
+}
+
 /** Hoja inferior al estilo iOS. Se cierra con el fondo, la X o Escape. */
 export function Sheet({ title, onClose, children, footer, full, headerAction }: SheetProps) {
   const [closing, setClosing] = useState(false)
   const closeRef = useRef(onClose)
+  const closingRef = useRef(false)
   useEffect(() => {
     closeRef.current = onClose
   }, [onClose])
   const close = () => {
-    if (closing) return
+    if (closingRef.current) return
+    closingRef.current = true
     setClosing(true)
     window.setTimeout(() => closeRef.current(), 200)
   }
+  const closeFnRef = useRef(close)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    closeFnRef.current = close
+  })
+  useEffect(() => {
+    const id = Symbol('hoja')
+    openSheets.push(id)
+    syncScrollLock()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && openSheets[openSheets.length - 1] === id) closeFnRef.current()
+    }
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      openSheets.splice(openSheets.indexOf(id), 1)
+      syncScrollLock()
     }
-  })
-  return (
+  }, [])
+  // Se pinta directamente en <body>: dentro de otra hoja (que tiene su propio desplazamiento y
+  // animación) Safari de iOS la recorta y los gestos de deslizar se cruzan entre las dos.
+  return createPortal(
     <div className={`sheet-root ${closing ? 'sheet-closing' : ''}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
       <div className="sheet-scrim" onClick={close} />
       <div className={`sheet ${full ? 'full' : ''}`}>
@@ -86,7 +107,8 @@ export function Sheet({ title, onClose, children, footer, full, headerAction }: 
         <div className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
