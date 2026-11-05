@@ -21,6 +21,7 @@ import { HistoryScreen } from './screens/History'
 import { ImportStatement } from './screens/ImportStatement'
 import { TxEditor } from './screens/TxEditor'
 import { InstallHint, InstallGuide } from './screens/Install'
+import { AppLock } from './ui/AppLock'
 
 const TABS = [
   { path: '/', label: 'Inicio', icon: House },
@@ -135,6 +136,8 @@ function Shell() {
         {editing && <TxEditor tx={editing.tx} defaults={editing.defaults} onClose={() => setEditing(null)} />}
         {accountEditing && <AccountEditor id={accountEditing.id} onClose={() => setAccountEditing(null)} />}
         {ready && <InstallHint />}
+        {/* Se monta cuando los ajustes ya están cargados: así arranca bloqueada si toca */}
+        {ready && <AppLock />}
         <UpdatePrompt />
       </div>
     </EditorCtx.Provider>

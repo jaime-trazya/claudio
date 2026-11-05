@@ -21,6 +21,7 @@ import { categorize, effectiveRules } from '../domain/categorize'
 import { applyStatementImport, saveTemplate } from '../db/actions'
 import { setSetting } from '../db/settings'
 import { formatShortDate } from '../lib/dates'
+import { formatMoney } from '../lib/money'
 import type { ColumnMapping } from '../db/types'
 
 type Step = 'inicio' | 'columnas' | 'vista'
@@ -52,7 +53,7 @@ export function ImportStatement({ route }: { route: string }) {
   const [multiOpen, setMultiOpen] = useState(false)
   const [adjust, setAdjust] = useState(true)
   const [fingerprint, setFingerprint] = useState('')
-  const [seenBefore, setSeenBefore] = useState<string | null>(null)
+  const [seenBefore, setSeenBefore] = useState<{ date: string; accountId?: string } | null>(null)
   const [bankName, setBankName] = useState<string | null>(null)
   const undo = useUndo()
   const tr = useTRImport()
@@ -79,7 +80,7 @@ export function ImportStatement({ route }: { route: string }) {
       const fp = fileFingerprint(new Uint8Array(buf))
       setFingerprint(fp)
       const prevImport = (await db.imports.toArray()).find((i) => i.fingerprint === fp)
-      setSeenBefore(prevImport ? new Date(prevImport.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) : null)
+      setSeenBefore(prevImport ? { date: new Date(prevImport.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }), accountId: prevImport.accountId } : null)
       const isPdf = file.name.toLowerCase().endsWith('.pdf') || new Uint8Array(buf.slice(0, 4)).every((b, i) => b === [0x25, 0x50, 0x44, 0x46][i])
       if (isPdf) {
         const { readPdfLinesInBrowser } = await import('../import/pdfText')
@@ -175,8 +176,18 @@ export function ImportStatement({ route }: { route: string }) {
   async function save() {
     setBusy(true)
     try {
+      // ¿Ya había extractos de esta cuenta? Entonces un ajuste de saldo significa que algo no cuadra
+      // (falta un extracto intermedio, un movimiento borrado…). En el primero es normal: fija el saldo de partida.
+      const hadStatements = transactions.some((t) => t.accountId === accountId && t.bankBalance !== undefined)
       const res = await applyStatementImport({ rows: plan, accountId, fileName, categoryOverrides: overrides, bankBalance: adjust ? closing : null, fingerprint })
       await setSetting('defaultAccountId', accountId)
+      if (res.adjusted && hadStatements) {
+        void toast.confirm({
+          title: 'El saldo no cuadraba con el del banco',
+          message: `La app calculaba ${formatMoney(closing!.balance - res.adjusted, { currency: settings.currency })} y el banco dice ${formatMoney(closing!.balance, { currency: settings.currency })} (${res.adjusted > 0 ? '+' : ''}${formatMoney(res.adjusted, { currency: settings.currency })}). Se ha ajustado para que coincida. Suele pasar cuando falta importar un extracto anterior o se borró algún movimiento.`,
+          confirmLabel: 'Entendido',
+        })
+      }
       toast.show(`Importado: ${res.added} nuevos${res.reconciled ? ` · ${res.reconciled} conciliados` : ''}${res.skipped ? ` · ${res.skipped} omitidos` : ''}${res.adjusted ? ' · saldo cuadrado con el banco' : ''}`, { action: undo })
       navigate(`/movimientos?cuenta=${accountId}`, true)
     } finally {
@@ -316,11 +327,15 @@ export function ImportStatement({ route }: { route: string }) {
           <button className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setStep('columnas')}>
             <Settings2 size={15} /> Ajustar columnas
           </button>
-          {seenBefore && (
-            <Notice tone="warn" icon={<TriangleAlert size={20} />} title={`Ya importaste este archivo el ${seenBefore}`}>
+          {seenBefore && seenBefore.accountId && seenBefore.accountId !== accountId && accounts.some((a) => a.id === seenBefore.accountId) ? (
+            <Notice tone="neg" icon={<TriangleAlert size={20} />} title={`Este archivo ya lo importaste en «${accounts.find((a) => a.id === seenBefore.accountId)?.name}»`}>
+              Lo importaste el {seenBefore.date} en otra cuenta. Si es de «{accounts.find((a) => a.id === accountId)?.name}», adelante; si no, vuelve atrás y elige la cuenta correcta para no duplicar el dinero.
+            </Notice>
+          ) : seenBefore ? (
+            <Notice tone="warn" icon={<TriangleAlert size={20} />} title={`Ya importaste este archivo el ${seenBefore.date}`}>
               No pasa nada: los movimientos que ya tienes salen como duplicados y no se guardarán otra vez.
             </Notice>
-          )}
+          ) : null}
           {plan.some((r) => r.elsewhere) && (
             <Notice tone="warn" icon={<TriangleAlert size={20} />} title="Algunos movimientos ya están en otra cuenta">
               {plan.filter((r) => r.elsewhere).length} movimientos coinciden con otros guardados en «{accounts.find((a) => a.id === plan.find((r) => r.elsewhere)!.elsewhere)?.name}». Se han dejado fuera; márcalos si de verdad son de esta cuenta.

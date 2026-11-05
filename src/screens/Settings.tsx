@@ -15,6 +15,7 @@ import { transactionsToCSV } from '../domain/csvExport'
 import { todayISO } from '../lib/dates'
 import type { Settings } from '../db/types'
 import { ACCENT_PRESETS, isValidHex } from '../ui/theme'
+import { LockSettings } from '../ui/LockSettings'
 
 const CURRENCIES = [
   ['EUR', 'Euro (€)'],
@@ -68,6 +69,10 @@ export function SettingsScreen() {
       <div className="section-head">
         <h2 className="section-title">Tus datos</h2>
       </div>
+
+      <section className="card flush list" aria-label="Privacidad">
+        <LockSettings />
+      </section>
 
       <section className="card flush list" aria-label="Deshacer y borrar">
         <button
@@ -256,6 +261,20 @@ export function SettingsScreen() {
         <button className="btn primary" onClick={() => void exportBackup()}>
           <Download size={18} /> Exportar copia (JSON)
         </button>
+        <div className="field">
+          <span className="field-label">Recordarme hacer la copia</span>
+          <Segmented
+            label="Recordatorio de copia"
+            value={String(settings.backupReminderDays) as '7' | '14' | '30'}
+            onChange={(v) => set('backupReminderDays', Number(v) as 7 | 14 | 30)}
+            options={[
+              { value: '7', label: 'Cada semana' },
+              { value: '14', label: 'Cada 2 semanas' },
+              { value: '30', label: 'Cada mes' },
+            ]}
+          />
+          <span className="meta">Un iPhone no deja a una web guardar sola en iCloud: la app te avisa en Inicio y la copia se hace con un toque.</span>
+        </div>
         <button className="btn" onClick={() => void restore()}>
           <Upload size={18} /> Restaurar una copia
         </button>

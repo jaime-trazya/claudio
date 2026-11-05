@@ -181,3 +181,34 @@ export function singleBars(points: { key: string; amount: number }[], currency: 
     }
   }
 }
+
+/** Gasto acumulado del mes día a día frente al mes anterior (línea discontinua) */
+export function cumulativeMonth(current: number[], previous: number[], totalDays: number, currency: string, prevLabel: string): (c: Colors) => ChartConfiguration {
+  return (c) => {
+    const labels = Array.from({ length: Math.max(totalDays, previous.length) }, (_, i) => String(i + 1))
+    const cur = current.map((v) => v / 100)
+    const prev = previous.map((v) => v / 100)
+    return {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Este mes', data: cur, borderColor: c.accent, backgroundColor: c.accent + '22', fill: true, borderWidth: 2, tension: 0.25, pointRadius: 0, pointHoverRadius: 4 },
+          { label: prevLabel, data: prev, borderColor: c.faint, backgroundColor: c.faint, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.25 },
+        ],
+      },
+      options: {
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+          y: { min: 0, max: niceMax([...cur, ...prev]), grid: { color: c.grid }, border: { display: false }, ticks: { maxTicksLimit: 4, callback: euroTick(currency) } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { title: (items) => `Día ${items[0]?.label ?? ''}`, label: (ctx) => `${ctx.dataset.label}: ${formatMoney(Math.round(Number(ctx.raw) * 100), { currency })}` } },
+        },
+      },
+    }
+  }
+}

@@ -10,7 +10,9 @@ import { useShortcutImport } from '../ui/useShortcutImport'
 import { isIOS, isStandalone } from '../ui/files'
 import { accountingMonth, daysBetween, formatShortDate, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
 import { formatMoney, formatRate } from '../lib/money'
-import { comparableRange, summarize } from '../domain/stats'
+import { comparableRange, cumulativeExpenses, projectedExpenses, summarize } from '../domain/stats'
+import { ChartCanvas } from '../charts/ChartCanvas'
+import { cumulativeMonth } from '../charts/configs'
 import { netWorth } from '../domain/investments'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
@@ -70,9 +72,16 @@ export function Home() {
     const now = fromISO(today)
     return last.getFullYear() < now.getFullYear() || last.getMonth() < now.getMonth()
   })()
-  const showBackup = backupOverdue(settings.lastBackupAt, transactions.length > 0)
+  const showBackup = backupOverdue(settings.lastBackupAt, transactions.length > 0, undefined, settings.backupReminderDays)
   const atRisk = statuses.filter((s) => s.level !== 'ok')
   const inSafari = isIOS() && !isStandalone()
+
+  // Gasto acumulado día a día: este mes frente al anterior entero
+  const prevTitle = prevName[0].toUpperCase() + prevName.slice(1)
+  const chartNow = cumulativeExpenses(statTxs, month, categoryById, today)
+  const chartBefore = cumulativeExpenses(statTxs, prevRange, categoryById)
+  // ChartCanvas actualiza la gráfica existente (no la recrea): no hace falta memorizar
+  const chartBuild = cumulativeMonth(chartNow, chartBefore, totalDays, currency, prevTitle)
 
   if (!accounts.length) {
     return (
@@ -112,6 +121,7 @@ export function Home() {
   const budgetSpent = statuses.reduce((s, b) => s + b.spent, 0)
   const spentRatio = budgetTotal ? budgetSpent / budgetTotal : 0
   const nw = netWorth(accounts, transactions, snapshots)
+  const projected = projectedExpenses(cur.expenses, dayN, totalDays)
   const dayRatio = Math.min(1, dayN / totalDays)
   const incomeD = deltaWords(cur.income, prev.income, currency)
   const expD = deltaWords(cur.expenses, prev.expenses, currency, true)
@@ -182,6 +192,20 @@ export function Home() {
             {expD.text === 'Sin movimientos' ? 'Sin gastos todavía' : `${expD.text} que ${cmp.partial ? 'a estas alturas de' : 'en'} ${prevName}`}
           </p>
         )}
+        {projected !== null && (
+          <p className="small projection">
+            A este ritmo, unos <strong>{formatMoney(projected, { currency })}</strong> a fin de mes
+            {budgetTotal > 0 && projected > budgetTotal ? ' · por encima de lo presupuestado' : ''}
+          </p>
+        )}
+        {(chartNow.some(Boolean) || chartBefore.some(Boolean)) && (
+          <div>
+            <ChartCanvas build={chartBuild} height={120} label={`Gasto acumulado de ${monthName(fromISO(today).getMonth())} frente a ${prevName}`} />
+            <p className="meta chart-key">
+              <span className="key key-now" /> Este mes <span className="key key-prev" /> {prevTitle}
+            </p>
+          </div>
+        )}
         <div className="split3">
           <div>
             <div className="meta">Ingresos</div>
@@ -232,7 +256,7 @@ export function Home() {
         <Notice
           tone="warn"
           icon={<CloudUpload size={20} />}
-          title={settings.lastBackupAt ? 'Hace más de 30 días de tu última copia' : 'Aún no has hecho ninguna copia'}
+          title={settings.lastBackupAt ? `Hace más de ${settings.backupReminderDays} días de tu última copia` : 'Aún no has hecho ninguna copia'}
           actions={
             <button className="btn small primary" onClick={() => void exportBackup()}>
               Hacer copia ahora

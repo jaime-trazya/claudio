@@ -66,12 +66,14 @@ describe('base de datos', () => {
     expect(() => validateBackup({ app: 'claudio-finanzas', tables: { transactions: 'x' } })).toThrow()
   })
 
-  it('aviso de copia: más de 30 días o nunca', () => {
+  it('aviso de copia: cada semana por defecto, o cada los días elegidos, o nunca hecha', () => {
     const now = Date.UTC(2026, 10, 4)
     expect(backupOverdue(null, true, now)).toBe(true)
     expect(backupOverdue(null, false, now)).toBe(false)
-    expect(backupOverdue(now - 10 * 86400000, true, now)).toBe(false)
-    expect(backupOverdue(now - 31 * 86400000, true, now)).toBe(true)
+    expect(backupOverdue(now - 5 * 86400000, true, now)).toBe(false)
+    expect(backupOverdue(now - 8 * 86400000, true, now)).toBe(true)
+    expect(backupOverdue(now - 10 * 86400000, true, now, 30)).toBe(false)
+    expect(backupOverdue(now - 31 * 86400000, true, now, 30)).toBe(true)
   })
 })
 

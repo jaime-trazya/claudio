@@ -170,6 +170,8 @@ export interface Settings {
   currency: string
   monthStartDay: number
   lastBackupAt: number | null
+  /** Cada cuántos días recordar hacer la copia de seguridad */
+  backupReminderDays: 7 | 14 | 30
   installHintSeen: boolean
   lastTRImportAt: number | null
   trReminderDay: number
@@ -182,12 +184,18 @@ export interface Settings {
   accentColor: string
   /** Versión de las categorías y reglas predefinidas ya aplicada */
   defaultsVersion: number
+  /** Bloqueo con Face ID y código de respaldo (ver lib/lock.ts) */
+  lockEnabled: boolean
+  lockCredentialId: string
+  lockPinSalt: string
+  lockPinHash: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   currency: 'EUR',
   monthStartDay: 1,
   lastBackupAt: null,
+  backupReminderDays: 7,
   installHintSeen: false,
   lastTRImportAt: null,
   trReminderDay: 3,
@@ -197,6 +205,10 @@ export const DEFAULT_SETTINGS: Settings = {
   ownerName: '',
   accentColor: '',
   defaultsVersion: 1,
+  lockEnabled: false,
+  lockCredentialId: '',
+  lockPinSalt: '',
+  lockPinHash: '',
 }
 
 export interface Goal {

@@ -175,6 +175,29 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
   return list
 }
 
+/**
+ * Gasto acumulado día a día dentro de un periodo (mismas reglas que summarize: sin traspasos,
+ * devoluciones restando). Se detiene en `until` (hoy) para no dibujar días que aún no han pasado.
+ */
+export function cumulativeExpenses(txs: Transaction[], range: DateRange, categories?: Map<string, Category>, until?: ISODate): number[] {
+  const inPeriod = txs.filter((t) => isCountable(t) && inRange(t.date, range))
+  const out: number[] = []
+  for (let d = range.start; d <= range.end; d = addDays(d, 1)) {
+    if (until && d > until) break
+    out.push(summarize(inPeriod, { start: range.start, end: d }, categories).expenses)
+  }
+  return out
+}
+
+/**
+ * Previsión de gasto a fin de mes al ritmo actual. Los primeros días el ritmo engaña (un alquiler
+ * el día 1 se multiplicaría por 30): antes del día 5 no se da previsión.
+ */
+export function projectedExpenses(spent: number, day: number, totalDays: number): number | null {
+  if (day < 5 || day >= totalDays || spent <= 0) return null
+  return Math.round((spent / day) * totalDays)
+}
+
 export interface MonthPoint {
   key: string
   start: ISODate

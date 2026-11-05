@@ -103,10 +103,10 @@ export function backupFileName(date = new Date()): string {
   return `copia-claudio-${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.json`
 }
 
-export const BACKUP_REMINDER_DAYS = 30
+export const BACKUP_REMINDER_DAYS = 7
 
-export function backupOverdue(lastBackupAt: number | null, hasData: boolean, now = Date.now()): boolean {
+export function backupOverdue(lastBackupAt: number | null, hasData: boolean, now = Date.now(), days: number = BACKUP_REMINDER_DAYS): boolean {
   if (!hasData) return false
   if (!lastBackupAt) return true
-  return now - lastBackupAt > BACKUP_REMINDER_DAYS * 86400000
+  return now - lastBackupAt > days * 86400000
 }

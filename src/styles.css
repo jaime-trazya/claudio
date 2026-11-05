@@ -460,6 +460,12 @@ button.list-item:active, .list-item.tap:active { background: var(--rule); }
 .hero-money-foot .money { color: var(--text); font-weight: 600; }
 .hero-money:active { transform: scale(0.99); }
 .hero-month { display: flex; flex-direction: column; gap: 14px; }
+.hero-month .projection { margin: -6px 0 0; color: var(--muted); }
+.hero-month .projection strong { color: var(--text); font-weight: 600; }
+.chart-key { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.chart-key .key { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--accent); margin-left: 6px; }
+.chart-key .key:first-child { margin-left: 0; }
+.chart-key .key-prev { border-top: 2px dashed var(--muted); }
 .hero-month .figure-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .hero-month .split3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
 .hero-month .split3 .money { font-size: 16px; font-weight: 600; }
@@ -476,3 +482,12 @@ button.list-item:active, .list-item.tap:active { background: var(--rule); }
   :root { --margin: 24px; --pad: 22px; }
   .actions { gap: 14px; }
 }
+
+/* ---------- Bloqueo con Face ID ---------- */
+.app-lock { position: fixed; inset: 0; z-index: 200; background: var(--ground); display: grid; place-items: center; padding: calc(var(--safe-top) + 24px) var(--margin) calc(var(--safe-bottom) + 24px); }
+.app-lock-inner { width: 100%; max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.app-lock-icon { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 6px; }
+.app-lock h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.app-lock-pin { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 10px; text-align: left; }
+.app-lock-pin .input { text-align: center; font-size: 22px; letter-spacing: 0.3em; }
+.app-lock-error { min-height: 1.3em; color: var(--negative, #c62828); font-size: 14px; margin: 0; }
