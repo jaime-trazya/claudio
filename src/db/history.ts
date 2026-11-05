@@ -104,19 +104,24 @@ export async function listRestorePoints(database: FinanzasDB = db): Promise<Omit
 }
 
 const REDO_PREFIX = 'Antes de deshacer: '
+const BACK_PREFIX = 'Antes de volver: '
 
 /**
- * Los puntos «Antes de deshacer…» sirven para rehacer desde el historial, pero no son una acción que
- * deshacer: si «Deshacer lo último» los tomara, pulsarlo dos veces rehacía en vez de retroceder dos pasos.
+ * Los puntos «Antes de deshacer…» (los crea «Deshacer lo último») sirven para rehacer desde el
+ * historial, pero no son una acción que deshacer: si «Deshacer lo último» los tomara, pulsarlo dos
+ * veces rehacía en vez de retroceder dos pasos.
+ * En cambio, volver a un punto desde el historial (por ejemplo, rehacer) sí es una acción tuya: su
+ * punto «Antes de volver…» es lo que deshace «Deshacer lo último», sin saltarse nada más.
  */
 export const isRedoPoint = (p: Pick<RestorePoint, 'label'>) => p.label.startsWith(REDO_PREFIX)
 
 /** Vuelve a un punto. Antes guarda el estado actual, para poder rehacer si te equivocas. */
-export async function restorePoint(id: string, database: FinanzasDB = db): Promise<void> {
+export async function restorePoint(id: string, database: FinanzasDB = db, opts: { fromUndo?: boolean } = {}): Promise<void> {
   const p = await database.restorePoints.get(id)
   if (!p) throw new Error('Ese punto de restauración ya no existe')
   const json = p.compressed ? await gunzip(p.data as ArrayBuffer) : (p.data as string)
-  await createRestorePoint(`${REDO_PREFIX}${p.kind === 'diaria' ? 'volver a una foto diaria' : p.label.replace(/^Antes de (deshacer: )?/, '')}`, 'accion', database)
+  const what = p.kind === 'diaria' ? 'volver a una foto diaria' : p.label.replace(/^Antes de ((deshacer|volver): )?/, '')
+  await createRestorePoint(`${opts.fromUndo ? REDO_PREFIX : BACK_PREFIX}${what}`, 'accion', database)
   await restoreBackup(JSON.parse(json), database)
 }
 
@@ -124,7 +129,7 @@ export async function restorePoint(id: string, database: FinanzasDB = db): Promi
 export async function undoLast(database: FinanzasDB = db): Promise<string | null> {
   const last = (await database.restorePoints.where('kind').equals('accion').sortBy('createdAt')).filter((p) => !isRedoPoint(p)).pop()
   if (!last) return null
-  await restorePoint(last.id, database)
+  await restorePoint(last.id, database, { fromUndo: true })
   // El punto "Antes de volver…" que acaba de crearse sirve para rehacer; el deshecho ya no hace falta
   await database.restorePoints.delete(last.id)
   return last.label

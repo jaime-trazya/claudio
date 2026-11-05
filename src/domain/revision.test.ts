@@ -77,7 +77,8 @@ describe('devoluciones', () => {
     const s = summarize(txs, range, byId)
     const donut = expensesByCategory(txs, range, cats)
     expect(s.expenses).toBe(donut.reduce((x, c) => x + c.amount, 0))
-    expect(donut.flatMap((c) => c.children).every((c) => c.amount > 0)).toBe(true)
+    // El detalle de cada categoría (devoluciones en negativo incluidas) suma lo mismo que ella
+    for (const c of donut) expect(c.children.reduce((x, ch) => x + ch.amount, 0)).toBe(c.amount)
   })
   it('los gastos nunca salen negativos y la tasa de ahorro no pasa del 100 %', () => {
     const txs = [tx({ date: '2026-10-01', amount: 10000, categoryId: 'nomina' }), tx({ date: '2026-10-02', amount: -1000, categoryId: 'ocio' }), tx({ date: '2026-10-03', amount: 5000, categoryId: 'compras' })]

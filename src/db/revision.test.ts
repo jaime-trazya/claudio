@@ -114,3 +114,47 @@ describe('exportar a CSV', () => {
     expect(line).toContain(';-12,50;')
   })
 })
+
+describe('tercera revisión', () => {
+  it('el bloqueo de este iPhone no viaja en las copias ni cambia al restaurar o deshacer', async () => {
+    const { createBackup, restoreBackup } = await import('./backup')
+    const d = new FinanzasDB('test-bloqueo-copias')
+    await d.open()
+    await d.accounts.add(account({ id: 'k' }))
+    await d.settings.bulkPut([{ key: 'lockEnabled', value: true }, { key: 'lockPinHash', value: 'mio' }, { key: 'currency', value: 'EUR' }])
+    const copy = await createBackup(d)
+    expect((copy.tables.settings as { key: string }[]).some((s) => s.key.startsWith('lock'))).toBe(false)
+    // Una copia antigua (o de otro iPhone) que sí trae un bloqueo no lo pisa
+    const foreign = { ...copy, tables: { ...copy.tables, settings: [...copy.tables.settings, { key: 'lockPinHash', value: 'ajeno' }, { key: 'lockEnabled', value: false }] } }
+    await restoreBackup(foreign, d)
+    expect((await d.settings.get('lockPinHash'))?.value).toBe('mio')
+    expect((await d.settings.get('lockEnabled'))?.value).toBe(true)
+    d.close()
+  })
+  it('deshacer después de rehacer desde el historial solo retrocede un paso', async () => {
+    const { listRestorePoints, restorePoint } = await import('./history')
+    const d = new FinanzasDB('test-rehacer')
+    await d.open()
+    await d.accounts.add(account({ id: 'c' }))
+    await createRestorePoint('Antes de importar «B»', 'accion', d)
+    await d.transactions.add(tx({ id: 'b', accountId: 'c', date: '2026-10-01', amount: -100 }))
+    await createRestorePoint('Antes de importar «A»', 'accion', d)
+    await d.transactions.add(tx({ id: 'a', accountId: 'c', date: '2026-10-02', amount: -200 }))
+    await undoLast(d) // quita A
+    const redo = (await listRestorePoints(d)).find((p) => p.label.startsWith('Antes de deshacer'))!
+    await restorePoint(redo.id, d) // vuelve a poner A
+    expect(await d.transactions.count()).toBe(2)
+    await undoLast(d) // deshace solo el rehacer: queda B
+    expect((await d.transactions.toArray()).map((t) => t.id)).toEqual(['b'])
+    d.close()
+  })
+  it('un Bizum del mismo importe en la cuenta de ahorro no se toma por la otra pata del traspaso', async () => {
+    await db.accounts.bulkPut([account({ id: 'zA' }), account({ id: 'zB' })])
+    const bizum = { ...newTransaction({ accountId: 'zB', date: '2026-10-12', amount: 5000, description: 'Bizum de Ana cena' }), source: 'extracto' as const }
+    await db.transactions.bulkAdd([{ ...newTransaction({ accountId: 'zA', date: '2026-10-10', amount: -5000, description: 'To Cuenta remunerada' }), source: 'extracto' }, bizum])
+    await mirrorTransfers('zA', 'zB')
+    const after = (await db.transactions.get(bizum.id))!
+    expect(after.kind).toBe('ingreso')
+    expect(after.transferId).toBeUndefined()
+  })
+})

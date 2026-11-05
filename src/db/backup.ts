@@ -9,11 +9,19 @@ export interface Backup {
   tables: Record<TableName, unknown[]>
 }
 
+/**
+ * El bloqueo (Face ID y código) es de este dispositivo: no viaja en las copias ni en los puntos para
+ * deshacer. Si viajara, restaurar una copia de otro iPhone traería una llave que aquí no existe y un
+ * código que quizá no recuerdas, y deshacer podría quitar o volver a poner el bloqueo sin avisar.
+ */
+const isDeviceSetting = (key: unknown) => typeof key === 'string' && key.startsWith('lock')
+
 export async function createBackup(database: FinanzasDB = db): Promise<Backup> {
   const tables = {} as Record<TableName, unknown[]>
   await database.transaction('r', ALL_TABLES.map((t) => database.table(t)), async () => {
     for (const t of ALL_TABLES) tables[t] = await database.table(t).toArray()
   })
+  tables.settings = (tables.settings as { key: string }[]).filter((s) => !isDeviceSetting(s.key))
   return { app: BACKUP_APP, schemaVersion: database.verno, exportedAt: new Date().toISOString(), tables }
 }
 
@@ -84,8 +92,11 @@ export function backupSummary(b: Backup): { accounts: number; transactions: numb
 export async function restoreBackup(data: unknown, database: FinanzasDB = db): Promise<{ transactions: number }> {
   const backup = validateBackup(data)
   await database.transaction('rw', ALL_TABLES.map((t) => database.table(t)), async () => {
+    const deviceSettings = (await database.settings.toArray()).filter((s) => isDeviceSetting(s.key))
     for (const t of ALL_TABLES) {
-      const rows = (backup.tables[t] ?? []) as unknown[]
+      let rows = (backup.tables[t] ?? []) as unknown[]
+      // El bloqueo de este dispositivo se conserva tal cual (las copias antiguas sí lo traían)
+      if (t === 'settings') rows = [...(rows as { key: string }[]).filter((s) => !isDeviceSetting(s.key)), ...deviceSettings]
       await database.table(t).clear()
       if (rows.length) await database.table(t).bulkAdd(rows)
     }

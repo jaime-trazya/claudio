@@ -446,6 +446,9 @@ export const SAVINGS_TRANSFER = /cuenta remunerada|cuenta de ahorro|\bahorros?\b
  */
 export const MIRROR_PREFIX = 'espejo-'
 
+/** Conceptos con los que un banco anota el lado que recibe un traspaso propio */
+const TRANSFER_WORDS = /traspaso|transferencia (recibida|de|desde)|transfer from|from .*(cuenta|account|savings|ahorro)|desde .*cuenta|top.?up|recarga/i
+
 /**
  * Crea en la cuenta de destino la otra pata de los traspasos de la cuenta de origen
  * (p. ej. los envíos a la Cuenta Remunerada de Revolut) y los enlaza. No duplica:
@@ -459,7 +462,9 @@ export async function mirrorTransfers(fromId: string, toId: string, pattern: Reg
     const from = await db.transactions.where('accountId').equals(fromId).toArray()
     const dest = await db.transactions.where('accountId').equals(toId).toArray()
     const mirrored = new Set(dest.map((t) => t.externalId).filter(Boolean))
-    const free = dest.filter((t) => !t.transferId)
+    // Solo vale como la otra pata un movimiento que ya es traspaso o cuyo concepto lo dice: un Bizum
+    // o un ingreso del mismo importe esos días no es el traspaso y no debe dejar de contar como ingreso
+    const free = dest.filter((t) => !t.transferId && (t.kind === 'transferencia' || t.kind === 'aportacion' || TRANSFER_WORDS.test(t.bankDescription ?? t.description) || pattern.test(t.bankDescription ?? t.description)))
     const taken = new Set<string>()
     const legs: Transaction[] = []
     const updates: Transaction[] = []

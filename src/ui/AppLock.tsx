@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Lock, ScanFace } from 'lucide-react'
 import { useData } from './useData'
-import { checkPin, RELOCK_MS, verifyBiometrics } from '../lib/lock'
+import { checkPin, pinWait, recordPinFailure, resetPinFailures, RELOCK_MS, verifyBiometrics } from '../lib/lock'
+import { lockPageScroll } from './scrollLock'
 
 /**
  * Pantalla de bloqueo: tapa toda la app al abrirla y al volver tras más de un minuto fuera.
@@ -14,31 +15,36 @@ export function AppLock() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Tapa la app en cuanto pasa a segundo plano: así ni el selector de apps del iPhone ni el instante
+  // de volver enseñan tus datos. Al volver antes de un minuto se destapa sin pedir nada.
+  const [covered, setCovered] = useState(false)
   const hiddenAt = useRef<number | null>(null)
 
   useEffect(() => {
     if (!enabled) return
     const onVis = () => {
-      if (document.visibilityState === 'hidden') hiddenAt.current = Date.now()
-      else if (hiddenAt.current !== null && Date.now() - hiddenAt.current > RELOCK_MS) setLocked(true)
+      if (document.visibilityState === 'hidden') {
+        hiddenAt.current = Date.now()
+        setCovered(true)
+      } else {
+        if (hiddenAt.current !== null && Date.now() - hiddenAt.current > RELOCK_MS) setLocked(true)
+        setCovered(false)
+      }
     }
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
+    window.addEventListener('pagehide', onVis)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('pagehide', onVis)
+    }
   }, [enabled])
 
   // Al activarlo en Ajustes no se bloquea en ese momento (ya estás dentro): el estado inicial es el del arranque
   const show = enabled && locked
 
-  useEffect(() => {
-    if (!show) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [show])
+  useEffect(() => (show ? lockPageScroll() : undefined), [show])
 
-  if (!show) return null
+  if (!show) return enabled && covered ? <div className="app-lock" aria-hidden="true" /> : null
 
   async function faceId() {
     setBusy(true)
@@ -51,12 +57,20 @@ export function AppLock() {
 
   async function withPin(e: React.FormEvent) {
     e.preventDefault()
+    const wait = pinWait()
+    if (wait > 0) {
+      setError(`Demasiados intentos. Espera ${Math.ceil(wait / 1000)} s.`)
+      return
+    }
     setBusy(true)
     const ok = await checkPin(pin, settings.lockPinSalt, settings.lockPinHash)
     setBusy(false)
-    if (ok) unlock()
-    else {
-      setError('Código incorrecto')
+    if (ok) {
+      resetPinFailures()
+      unlock()
+    } else {
+      const next = recordPinFailure()
+      setError(next > 0 ? `Código incorrecto. Espera ${Math.ceil(next / 1000)} s para volver a probar.` : 'Código incorrecto')
       setPin('')
     }
   }

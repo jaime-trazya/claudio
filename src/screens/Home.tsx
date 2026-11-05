@@ -10,7 +10,7 @@ import { useShortcutImport } from '../ui/useShortcutImport'
 import { isIOS, isStandalone } from '../ui/files'
 import { accountingMonth, daysBetween, formatShortDate, fromISO, monthLabel, shiftMonth, monthRange, todayISO, monthName } from '../lib/dates'
 import { formatMoney, formatRate } from '../lib/money'
-import { comparableRange, cumulativeExpenses, projectedExpenses, summarize } from '../domain/stats'
+import { comparableRange, cumulativeExpenses, monthProjection, summarize } from '../domain/stats'
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { cumulativeMonth } from '../charts/configs'
 import { netWorth } from '../domain/investments'
@@ -52,7 +52,8 @@ export function Home() {
   const statuses = budgets.map((b) => budgetStatus(b, statTxs, month, categories))
   const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0)
   const pending = transactions.filter((t) => t.status === 'pendiente')
-  const upcoming = detectRecurring(transactions, today)
+  const recurring = detectRecurring(transactions, today)
+  const upcoming = recurring
     .filter((r) => !settings.dismissedRecurring.includes(r.key) && daysBetween(today, r.nextDate) <= 10 && daysBetween(today, r.nextDate) >= -3)
     .sort((a, b) => a.nextDate.localeCompare(b.nextDate))
     .slice(0, 4)
@@ -121,7 +122,7 @@ export function Home() {
   const budgetSpent = statuses.reduce((s, b) => s + b.spent, 0)
   const spentRatio = budgetTotal ? budgetSpent / budgetTotal : 0
   const nw = netWorth(accounts, transactions, snapshots)
-  const projected = projectedExpenses(cur.expenses, dayN, totalDays)
+  const projected = monthProjection(statTxs, month, today, recurring, categoryById)
   const dayRatio = Math.min(1, dayN / totalDays)
   const incomeD = deltaWords(cur.income, prev.income, currency)
   const expD = deltaWords(cur.expenses, prev.expenses, currency, true)

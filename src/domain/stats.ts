@@ -1,5 +1,5 @@
 import type { Account, Category, Transaction } from '../db/types'
-import { type DateRange, type ISODate, accountingMonth, addDays, inRange, monthRange, shiftMonth, todayISO } from '../lib/dates'
+import { type DateRange, type ISODate, accountingMonth, addDays, daysBetween, inRange, monthRange, shiftMonth, todayISO } from '../lib/dates'
 import { merchantKey, prettyMerchant } from '../lib/text'
 
 /** Solo los gastos e ingresos cuentan en las estadísticas (no transferencias ni aportaciones) */
@@ -167,10 +167,11 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
       if (p.amount < 0) ch.count++
     }
   }
-  // Igual que summarize: una categoría (o subcategoría) con más devoluciones que gasto no aparece
+  // Igual que summarize: una categoría con más devoluciones que gasto no aparece
   const list = [...top.values()].filter((t) => t.amount > 0).sort((a, b) => b.amount - a.amount)
   list.forEach((t) => {
-    t.children = t.children.filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount)
+    // Las subcategorías con devoluciones se quedan (en negativo): así el detalle suma lo mismo que la categoría
+    t.children = t.children.filter((c) => c.amount !== 0).sort((a, b) => b.amount - a.amount)
   })
   return list
 }
@@ -180,22 +181,66 @@ export function expensesByCategory(txs: Transaction[], range: DateRange, categor
  * devoluciones restando). Se detiene en `until` (hoy) para no dibujar días que aún no han pasado.
  */
 export function cumulativeExpenses(txs: Transaction[], range: DateRange, categories?: Map<string, Category>, until?: ISODate): number[] {
-  const inPeriod = txs.filter((t) => isCountable(t) && inRange(t.date, range))
+  // Una sola pasada: gasto neto por categoría principal acumulado día a día (como summarize, que
+  // descuenta las devoluciones en su categoría y no deja ninguna en negativo)
+  const byDay = new Map<string, Transaction[]>()
+  for (const t of txs) {
+    if (!isCountable(t) || !inRange(t.date, range)) continue
+    const l = byDay.get(t.date)
+    if (l) l.push(t)
+    else byDay.set(t.date, [t])
+  }
+  const spent = new Map<string, number>()
   const out: number[] = []
   for (let d = range.start; d <= range.end; d = addDays(d, 1)) {
     if (until && d > until) break
-    out.push(summarize(inPeriod, { start: range.start, end: d }, categories).expenses)
+    for (const t of byDay.get(d) ?? [])
+      for (const p of parts(t)) {
+        if (p.amount > 0 && !isRefund(p.amount, p.categoryId, categories)) continue
+        const k = topCategoryKey(p.categoryId, categories)
+        spent.set(k, (spent.get(k) ?? 0) - p.amount)
+      }
+    let total = 0
+    for (const v of spent.values()) if (v > 0) total += v
+    out.push(total)
   }
   return out
 }
 
+/** Un gasto suelto a partir de este importe no se proyecta al resto del mes (una compra grande es puntual) */
+export const BIG_EXPENSE = 15000
+
 /**
- * Previsión de gasto a fin de mes al ritmo actual. Los primeros días el ritmo engaña (un alquiler
- * el día 1 se multiplicaría por 30): antes del día 5 no se da previsión.
+ * Previsión de gasto a fin de mes. Solo se proyecta el gasto del día a día: los recibos que se
+ * repiten (alquiler, luz, suscripciones) y los gastos grandes sueltos cuentan una vez, y se suman los
+ * recibos que aún no han llegado este mes. Así un alquiler el día 1 no se multiplica por 30.
+ * Antes del día 5 no hay previsión: el ritmo de los primeros días engaña.
  */
-export function projectedExpenses(spent: number, day: number, totalDays: number): number | null {
-  if (day < 5 || day >= totalDays || spent <= 0) return null
-  return Math.round((spent / day) * totalDays)
+export function monthProjection(
+  txs: Transaction[],
+  range: DateRange,
+  today: ISODate,
+  recurring: { key: string; nextDate: ISODate; monthly: number }[],
+  categories?: Map<string, Category>,
+): number | null {
+  const elapsed = { start: range.start, end: today < range.end ? today : range.end }
+  const day = daysBetween(range.start, elapsed.end) + 1
+  const totalDays = daysBetween(range.start, range.end) + 1
+  if (day < 5 || day >= totalDays) return null
+  const spent = summarize(txs, elapsed, categories).expenses
+  if (spent <= 0) return null
+  const keys = new Set(recurring.map((r) => r.key))
+  const charged = new Set<string>()
+  let fixed = 0
+  for (const t of txs) {
+    if (!isCountable(t) || t.amount >= 0 || !inRange(t.date, elapsed)) continue
+    const k = merchantKey(t.description)
+    if (keys.has(k)) charged.add(k)
+    if (keys.has(k) || -t.amount >= BIG_EXPENSE) fixed += -t.amount
+  }
+  const variable = Math.max(0, spent - fixed)
+  const pending = recurring.filter((r) => !charged.has(r.key) && r.nextDate > elapsed.end && r.nextDate <= range.end).reduce((s, r) => s + r.monthly, 0)
+  return Math.round(spent + (variable / day) * (totalDays - day) + pending)
 }
 
 export interface MonthPoint {

@@ -28,6 +28,7 @@ const CURRENCIES = [
 /** "Antes de importar «x»" → "Deshacer: importar «x»"; "Antes de deshacer: …" → "Rehacer: …" */
 function actionText(label: string): string {
   if (label.startsWith('Antes de deshacer: ')) return `Rehacer: ${label.slice('Antes de deshacer: '.length)}`
+  if (label.startsWith('Antes de volver: ')) return `Deshacer lo que volviste a poner: ${label.slice('Antes de volver: '.length)}`
   return `Deshacer: ${label.replace(/^Antes de /, '')}`
 }
 

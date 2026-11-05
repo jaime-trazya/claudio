@@ -96,3 +96,41 @@ export async function verifyBiometrics(credentialId: string): Promise<boolean> {
 
 /** Tiempo en segundo plano tras el que se vuelve a bloquear */
 export const RELOCK_MS = 60_000
+
+// Intentos fallidos del código: a partir del 5.º hay que esperar (30 s, 1 min, 2 min… hasta 15 min).
+// Se guarda en localStorage para que recargar la app no reinicie la cuenta.
+const FAILS_KEY = 'claudio-lock-fails'
+type Fails = { n: number; until: number }
+function readFails(): Fails {
+  try {
+    const v = JSON.parse(localStorage.getItem(FAILS_KEY) ?? '') as Fails
+    return typeof v?.n === 'number' && typeof v?.until === 'number' ? v : { n: 0, until: 0 }
+  } catch {
+    return { n: 0, until: 0 }
+  }
+}
+export function lockoutDelay(failures: number): number {
+  return failures < 5 ? 0 : Math.min(15 * 60_000, 30_000 * 2 ** (failures - 5))
+}
+/** Milisegundos que faltan para poder volver a probar el código */
+export function pinWait(now = Date.now()): number {
+  return Math.max(0, readFails().until - now)
+}
+/** Apunta un fallo y devuelve la espera que toca */
+export function recordPinFailure(now = Date.now()): number {
+  const n = readFails().n + 1
+  const wait = lockoutDelay(n)
+  try {
+    localStorage.setItem(FAILS_KEY, JSON.stringify({ n, until: now + wait }))
+  } catch {
+    // sin almacenamiento: no se puede limitar entre recargas
+  }
+  return wait
+}
+export function resetPinFailures() {
+  try {
+    localStorage.removeItem(FAILS_KEY)
+  } catch {
+    // nada
+  }
+}

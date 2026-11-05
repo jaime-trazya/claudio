@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { openSheets, syncScrollLock } from './scrollLock'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { formatMoney, splitMoney } from '../lib/money'
 import type { Category } from '../db/types'
@@ -46,14 +47,6 @@ interface SheetProps {
   footer?: ReactNode
   full?: boolean
   headerAction?: ReactNode
-}
-
-// Hojas abiertas, de abajo arriba. La página no se desplaza mientras haya alguna abierta y Escape
-// cierra solo la de arriba. Antes cada hoja guardaba y restauraba el bloqueo por su cuenta: con una
-// hoja encima de otra (elegir categoría al editar un movimiento) la página se quedaba bloqueada.
-const openSheets: symbol[] = []
-function syncScrollLock() {
-  document.body.style.overflow = openSheets.length ? 'hidden' : ''
 }
 
 /** Hoja inferior al estilo iOS. Se cierra con el fondo, la X o Escape. */
