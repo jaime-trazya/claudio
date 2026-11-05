@@ -71,10 +71,63 @@ export function SettingsScreen() {
         <h2 className="section-title">Tus datos</h2>
       </div>
 
+      <section className="card flush list" aria-label="Datos">
+        <Row href="#/ajustes/cuentas" label="Cuentas" value={String(accounts.length)} />
+        <Row href="#/ajustes/categorias" label="Categorías" value={String(categories.length)} />
+        <Row href="#/ajustes/reglas" label="Reglas de categorización" value={String(rules.length)} />
+        <Row href="#/ajustes/plantillas" label="Plantillas de bancos" value={String(templates.length)} />
+        <Row href="#/analisis?vista=presupuestos" label="Presupuestos" />
+      </section>
+
+      <div className="section-head">
+        <h2 className="section-title">Privacidad</h2>
+      </div>
       <section className="card flush list" aria-label="Privacidad">
         <LockSettings />
       </section>
 
+      <div className="section-head">
+        <h2 className="section-title">Copia de seguridad</h2>
+      </div>
+      <section className="card stack">
+        <p className="muted small">
+          Guarda un archivo con todos tus datos en iCloud Drive (en la hoja de compartir, elige «Guardar en Archivos»). Última copia: <strong>{lastBackup}</strong>.
+        </p>
+        <button className="btn primary" onClick={() => void exportBackup()}>
+          <Download size={18} /> Exportar copia (JSON)
+        </button>
+        <div className="field">
+          <span className="field-label">Recordarme hacer la copia</span>
+          <Segmented
+            label="Recordatorio de copia"
+            value={String(settings.backupReminderDays) as '7' | '14' | '30'}
+            onChange={(v) => set('backupReminderDays', Number(v) as 7 | 14 | 30)}
+            options={[
+              { value: '7', label: 'Cada semana' },
+              { value: '14', label: 'Cada 2 semanas' },
+              { value: '30', label: 'Cada mes' },
+            ]}
+          />
+          <span className="meta">Un iPhone no deja a una web guardar sola en iCloud: la app te avisa en Inicio y la copia se hace con un toque.</span>
+        </div>
+        <button className="btn" onClick={() => void restore()}>
+          <Upload size={18} /> Restaurar una copia
+        </button>
+        <button
+          className="btn"
+          disabled={!transactions.length}
+          onClick={async () => {
+            const ok = await saveFile(transactionsToCSV(transactions, accounts, categories), `movimientos-${todayISO()}.csv`, 'text/csv')
+            if (ok) toast.show('Movimientos exportados')
+          }}
+        >
+          Exportar movimientos a CSV
+        </button>
+      </section>
+
+      <div className="section-head">
+        <h2 className="section-title">Deshacer y borrar</h2>
+      </div>
       <section className="card flush list" aria-label="Deshacer y borrar">
         <button
           className="list-item"
@@ -156,11 +209,15 @@ export function SettingsScreen() {
         )}
       </section>
 
-
-      <div className="section-head">
-        <h2 className="section-title">Preferencias</h2>
-      </div>
-      <section className="card stack">
+      <details className="card settings-fold">
+        <summary>
+          <span className="grow">
+            <span className="primary-line">Preferencias</span>
+            <span className="secondary-line">Moneda, mes contable, tu nombre, apariencia, color y recordatorios</span>
+          </span>
+          <ChevronRight size={18} className="chev" />
+        </summary>
+        <div className="stack" style={{ marginTop: 12 }}>
         <label className="field">
           <span>Moneda</span>
           <select className="select" value={settings.currency} onChange={(e) => set('currency', e.target.value)}>
@@ -242,54 +299,8 @@ export function SettingsScreen() {
             ))}
           </select>
         </label>
-      </section>
-
-      <section className="card flush list" aria-label="Datos">
-        <Row href="#/ajustes/cuentas" label="Cuentas" value={String(accounts.length)} />
-        <Row href="#/ajustes/categorias" label="Categorías" value={String(categories.length)} />
-        <Row href="#/ajustes/reglas" label="Reglas de categorización" value={String(rules.length)} />
-        <Row href="#/ajustes/plantillas" label="Plantillas de bancos" value={String(templates.length)} />
-        <Row href="#/analisis?vista=presupuestos" label="Presupuestos" />
-      </section>
-
-      <div className="section-head">
-        <h2 className="section-title">Copia de seguridad</h2>
-      </div>
-      <section className="card stack">
-        <p className="muted small">
-          Guarda un archivo con todos tus datos en iCloud Drive (en la hoja de compartir, elige «Guardar en Archivos»). Última copia: <strong>{lastBackup}</strong>.
-        </p>
-        <button className="btn primary" onClick={() => void exportBackup()}>
-          <Download size={18} /> Exportar copia (JSON)
-        </button>
-        <div className="field">
-          <span className="field-label">Recordarme hacer la copia</span>
-          <Segmented
-            label="Recordatorio de copia"
-            value={String(settings.backupReminderDays) as '7' | '14' | '30'}
-            onChange={(v) => set('backupReminderDays', Number(v) as 7 | 14 | 30)}
-            options={[
-              { value: '7', label: 'Cada semana' },
-              { value: '14', label: 'Cada 2 semanas' },
-              { value: '30', label: 'Cada mes' },
-            ]}
-          />
-          <span className="meta">Un iPhone no deja a una web guardar sola en iCloud: la app te avisa en Inicio y la copia se hace con un toque.</span>
         </div>
-        <button className="btn" onClick={() => void restore()}>
-          <Upload size={18} /> Restaurar una copia
-        </button>
-        <button
-          className="btn"
-          disabled={!transactions.length}
-          onClick={async () => {
-            const ok = await saveFile(transactionsToCSV(transactions, accounts, categories), `movimientos-${todayISO()}.csv`, 'text/csv')
-            if (ok) toast.show('Movimientos exportados')
-          }}
-        >
-          Exportar movimientos a CSV
-        </button>
-      </section>
+      </details>
 
       <div className="section-head">
         <h2 className="section-title">Este dispositivo</h2>

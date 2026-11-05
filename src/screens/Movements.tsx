@@ -23,7 +23,7 @@ export function Movements({ route }: { route: string }) {
   const { transactions, statTxs, accounts, categories, categoryById, settings } = useData()
   const { openTx } = useEditor()
   const params = routeParams(route)
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(() => routeParams(route).get('q') ?? '')
   const [open, setOpen] = useState<FilterKey | null>(null)
   const [limit, setLimit] = useState(150)
 

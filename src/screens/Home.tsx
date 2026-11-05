@@ -14,7 +14,7 @@ import { comparableRange, cumulativeExpenses, monthProjection, summarize } from 
 import { ChartCanvas } from '../charts/ChartCanvas'
 import { cumulativeMonth } from '../charts/configs'
 import { netWorth } from '../domain/investments'
-import { unusualSpending } from '../domain/insights'
+import { staleStatements, unusualSpending } from '../domain/insights'
 import { setSetting } from '../db/settings'
 import { budgetStatus } from '../domain/budgets'
 import { backupOverdue } from '../db/backup'
@@ -127,6 +127,7 @@ export function Home() {
   const nw = netWorth(accounts, transactions, snapshots)
   const projected = monthProjection(statTxs, month, today, recurring, categoryById)
   const unusual = unusualSpending(statTxs, today, settings.monthStartDay, categories)
+  const stale = staleStatements(accounts, transactions, today)
   const hidden = settings.hideAmounts
   const dayRatio = Math.min(1, dayN / totalDays)
   const incomeD = deltaWords(cur.income, prev.income, currency, false, hidden)
@@ -275,6 +276,22 @@ export function Home() {
           }
         >
           Guárdala en iCloud Drive: es la única forma de recuperar tus datos si cambias de iPhone.
+        </Notice>
+      )}
+
+      {stale.length > 0 && (
+        <Notice
+          icon={<FileUp size={20} />}
+          title={stale.length === 1 ? `Importa el extracto de «${stale[0].name}»` : `Importa los extractos de ${stale.length} cuentas`}
+          actions={
+            <button className="btn small primary" onClick={() => navigate(stale.length === 1 ? `/importar?cuenta=${stale[0].id}` : '/importar')}>
+              Importar ahora
+            </button>
+          }
+        >
+          {stale.length === 1
+            ? `El último movimiento que tienes de su extracto es del ${formatShortDate(stale[0].last)}. Descarga el nuevo en la app del banco para que el saldo siga al día.`
+            : `${stale.map((s) => s.name).join(', ')}: hace más de un mes que no hay movimientos nuevos del banco.`}
         </Notice>
       )}
 

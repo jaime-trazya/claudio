@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { EyeOff, Pencil, Plus } from 'lucide-react'
+import { ChevronRight, EyeOff, Pencil, Plus } from 'lucide-react'
 import { useData } from '../ui/useData'
 import { useToast } from '../ui/toast'
 import { CategoryPicker, CategoryTile, Money, PeriodSwitch, Segmented, Sheet } from '../ui/components'
@@ -11,7 +11,7 @@ import { balanceSeries, categoryMonthly, comparableRange, delta, expensesByCateg
 import { budgetStatus } from '../domain/budgets'
 import { isExternalTransfer } from '../domain/transfers'
 import { detectRecurring, recurringTotals } from '../domain/recurring'
-import { chargesCalendar } from '../domain/insights'
+import { chargesCalendar, tagTotals } from '../domain/insights'
 import { netWorth } from '../domain/investments'
 import { addDays, formatDay } from '../lib/dates'
 import { accountingMonth, formatShortDate, monthRange, monthsBetween, shiftMonth, todayISO, monthShort, monthLabel, type DateRange } from '../lib/dates'
@@ -72,7 +72,6 @@ function Summary() {
   const [offset, setOffset] = useState(0)
   const today = todayISO()
   const [custom, setCustom] = useState<DateRange>(() => ({ start: accountingMonth(today, settings.monthStartDay).start, end: today }))
-  const [picked, setPicked] = useState<string | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const currency = settings.currency
 
@@ -116,7 +115,7 @@ function Summary() {
     return main
   }, [byCat, categoryById])
 
-  const donutBuild = useCallback((c: Parameters<ReturnType<typeof donut>>[0]) => donut(slices, currency, (i) => setPicked(slices[i]?.id ?? null))(c), [slices, currency])
+  const donutBuild = useCallback((c: Parameters<ReturnType<typeof donut>>[0]) => donut(slices, currency, (i) => slices[i] && slices[i].id !== '__rest__' && setDetail(slices[i].id))(c), [slices, currency])
   const sel = selMonth !== null && selMonth < months.length ? selMonth : null
   const barsBuild = useMemo(() => incomeExpenseBars(months, currency, sel), [months, currency, sel])
   const balanceBuild = useMemo(() => lineSeries(balances.map((b) => ({ label: monthShort(Number(b.key.slice(5)) - 1), value: b.balance })), currency), [balances, currency])
@@ -132,7 +131,6 @@ function Summary() {
         onChange={(v) => {
           setType(v)
           setOffset(0)
-          setPicked(null)
         }}
         options={[
           { value: 'mes', label: 'Mes' },
@@ -211,38 +209,18 @@ function Summary() {
           {byCat.map((c) => {
             const cat = c.categoryId ? categoryById.get(c.categoryId) : undefined
             const id = c.categoryId ?? 'none'
-            const open = picked === id
             return (
-              <div key={id}>
-                <button className="list-item" style={{ padding: '8px 0', minHeight: 52 }} onClick={() => setPicked(open ? null : id)} aria-expanded={open}>
-                  <CategoryTile category={cat} size="sm" />
-                  <div className="grow">
-                    <div className="primary-line ellipsis">{cat?.name ?? 'Sin categoría'}</div>
-                    <div className="secondary-line">
-                      {formatPercent(sum.expenses ? c.amount / sum.expenses : 0)} · {c.count} mov.
-                    </div>
+              <button key={id} className="list-item" style={{ padding: '8px 0', minHeight: 52 }} onClick={() => setDetail(id)}>
+                <CategoryTile category={cat} size="sm" />
+                <div className="grow">
+                  <div className="primary-line ellipsis">{cat?.name ?? 'Sin categoría'}</div>
+                  <div className="secondary-line">
+                    {formatPercent(sum.expenses ? c.amount / sum.expenses : 0)} · {c.count} mov.
                   </div>
-                  <Money cents={-c.amount} plain />
-                </button>
-                {open && (
-                  <div className="stack" style={{ gap: 0, padding: '0 0 8px 44px' }}>
-                    <button className="btn small" style={{ alignSelf: 'flex-start', margin: '2px 0 6px' }} onClick={() => setDetail(c.categoryId ?? 'none')}>
-                      Ver evolución y comercios
-                    </button>
-                    {c.children.map((ch) => (
-                      <button
-                        key={ch.categoryId ?? 'none'}
-                        className="row between small"
-                        style={{ minHeight: 40 }}
-                        onClick={() => navigate(`/movimientos?cat=${ch.categoryId ?? 'none'}`)}
-                      >
-                        <span className="muted">{ch.categoryId === c.categoryId ? 'General' : categoryLabel(ch.categoryId ? categoryById.get(ch.categoryId) : null, categoryById).split(' · ').pop()}</span>
-                        <Money cents={-ch.amount} plain />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </div>
+                <Money cents={-c.amount} plain />
+                <ChevronRight size={18} className="chev" />
+              </button>
             )
           })}
         </div>
@@ -351,13 +329,15 @@ function Summary() {
           )}
         </div>
       </section>
-      {detail && <CategoryDetail categoryId={detail === 'none' ? null : detail} period={period} onClose={() => setDetail(null)} />}
+      <TagsCard />
+
+      {detail && <CategoryDetail categoryId={detail === 'none' ? null : detail} period={period} periodLabel={period.label} total={byCat.find((c) => (c.categoryId ?? 'none') === detail)} onClose={() => setDetail(null)} />}
     </>
   )
 }
 
 /** Evolución de una categoría en los últimos 12 meses, su media y dónde se gasta */
-function CategoryDetail({ categoryId, period, onClose }: { categoryId: string | null; period: DateRange; onClose: () => void }) {
+function CategoryDetail({ categoryId, period, periodLabel, total, onClose }: { categoryId: string | null; period: DateRange; periodLabel: string; total?: ReturnType<typeof expensesByCategory>[number]; onClose: () => void }) {
   const { statTxs: transactions, categories, categoryById, settings } = useData()
   const cat = categoryId ? categoryById.get(categoryId) : undefined
   const months = useMemo(() => monthlySeries([], 12, settings.monthStartDay, period.end < todayISO() ? period.end : todayISO()), [settings.monthStartDay, period.end])
@@ -375,6 +355,23 @@ function CategoryDetail({ categoryId, period, onClose }: { categoryId: string | 
       <div className="card flush">
         <div className="kpis">
           <div className="kpi">
+            <div className="card-label">{periodLabel}</div>
+            <Money cents={-(total?.amount ?? 0)} plain />
+            <div className="meta">{total?.count ?? 0} movimiento{total?.count === 1 ? '' : 's'}</div>
+          </div>
+          <div className="kpi">
+            <div className="card-label">Frente a la media</div>
+            {avg > 0 && total ? (
+              <span className="money" style={{ fontSize: 21, fontWeight: 600, color: total.amount > avg * 1.1 ? 'var(--negative)' : total.amount < avg * 0.9 ? 'var(--positive)' : undefined }}>
+                {total.amount >= avg ? '+' : '−'}
+                {formatPercent(Math.abs(total.amount - avg) / avg)}
+              </span>
+            ) : (
+              <span className="money" style={{ fontSize: 21, fontWeight: 600, color: 'var(--faint)' }}>—</span>
+            )}
+            <div className="meta">media: {formatMoney(avg, { currency: settings.currency })}/mes</div>
+          </div>
+          <div className="kpi">
             <div className="card-label">Media al mes</div>
             <Money cents={-avg} plain />
             <div className="meta">últimos 12 meses</div>
@@ -386,6 +383,22 @@ function CategoryDetail({ categoryId, period, onClose }: { categoryId: string | 
           </div>
         </div>
       </div>
+      {total && total.children.length > 1 && (
+        <div className="card flush">
+          <div className="card-head" style={{ padding: 'var(--pad) var(--pad) 0' }}>
+            <h3>Por subcategoría</h3>
+          </div>
+          <div className="list">
+            {total.children.map((ch) => (
+              <a key={ch.categoryId ?? 'none'} className="list-item" href={`#/movimientos?cat=${ch.categoryId ?? 'none'}`} onClick={onClose} style={{ color: 'inherit' }}>
+                <div className="grow primary-line ellipsis">{ch.categoryId === categoryId ? 'General' : (categoryById.get(ch.categoryId ?? '')?.name ?? 'Sin categoría')}</div>
+                <Money cents={-ch.amount} plain />
+                <ChevronRight size={18} className="chev" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="card">
         <div className="card-head">
           <h3>Mes a mes</h3>
@@ -728,5 +741,39 @@ function ChargesCalendar() {
       )}
       <p className="meta">Fechas previstas a partir de los cargos de los meses anteriores. Si alguno no es un recibo, ocúltalo en «Recibos».</p>
     </>
+  )
+}
+
+/** Cuánto llevas en cada etiqueta (viajes, proyectos…), de siempre: un viaje puede durar varios meses */
+function TagsCard() {
+  const { statTxs } = useData()
+  const tags = tagTotals(statTxs).slice(0, 8)
+  return (
+    <section className="card flush">
+      <div className="card-head" style={{ padding: 'var(--pad) var(--pad) 0' }}>
+        <h2>Viajes y proyectos</h2>
+        <span className="meta">Por etiqueta</span>
+      </div>
+      {tags.length ? (
+        <div className="list">
+          {tags.map((t) => (
+            <a key={t.tag} className="list-item" href={`#/movimientos?q=${encodeURIComponent(t.tag)}`} style={{ color: 'inherit' }}>
+              <div className="grow">
+                <div className="primary-line ellipsis">{t.tag}</div>
+                <div className="secondary-line">
+                  {t.count} movimiento{t.count === 1 ? '' : 's'} · {t.first === t.last ? formatShortDate(t.first) : `${formatShortDate(t.first)} – ${formatShortDate(t.last)}`}
+                </div>
+              </div>
+              <Money cents={-t.spent} plain />
+              <ChevronRight size={18} className="chev" />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="muted small" style={{ padding: '6px var(--pad) var(--pad)' }}>
+          Ponle una etiqueta a los gastos de un viaje o un proyecto (por ejemplo «Viaje Roma») al editar el movimiento, y aquí verás cuánto te costó entero.
+        </p>
+      )}
+    </section>
   )
 }

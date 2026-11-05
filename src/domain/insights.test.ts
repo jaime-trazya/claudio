@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chargesCalendar, parseSearch, savingsSuggestion, unusualSpending } from './insights'
+import { chargesCalendar, parseSearch, savingsSuggestion, staleStatements, tagTotals, unusualSpending } from './insights'
 import type { Category } from '../db/types'
 import { tx } from '../test/helpers'
 
@@ -67,5 +67,39 @@ describe('buscar con preguntas', () => {
   })
   it('sin periodo, la búsqueda queda igual', () => {
     expect(parseSearch('Mercadona', '2026-11-05')).toEqual({ text: 'Mercadona', range: null, label: null })
+  })
+})
+
+describe('etiquetas', () => {
+  it('suma lo gastado con cada etiqueta, sin distinguir mayúsculas, con las devoluciones restando', () => {
+    const txs = [
+      tx({ date: '2026-09-10', amount: -30000, tags: ['Viaje Roma'] }),
+      tx({ date: '2026-09-12', amount: -4500, tags: ['viaje roma', 'comida'] }),
+      tx({ date: '2026-09-20', amount: 2000, tags: ['Viaje Roma'] }),
+      tx({ date: '2026-10-01', amount: -1000, tags: ['comida'] }),
+      tx({ date: '2026-10-02', amount: -9999, tags: ['Viaje Roma'], kind: 'transferencia' }),
+    ]
+    expect(tagTotals(txs)).toEqual([
+      { tag: 'comida', spent: 5500, count: 2, first: '2026-09-12', last: '2026-10-01' },
+      { tag: 'Viaje Roma', spent: 32500, count: 3, first: '2026-09-10', last: '2026-09-20' },
+    ])
+  })
+})
+
+describe('recordatorio del extracto del banco', () => {
+  it('avisa de las cuentas sin extracto nuevo en más de 35 días', () => {
+    const accs = [
+      { id: 'a', name: 'Nómina', type: 'banco' },
+      { id: 'b', name: 'Tarjeta', type: 'tarjeta' },
+      { id: 'c', name: 'Efectivo', type: 'efectivo' },
+      { id: 'd', name: 'Sin importar', type: 'banco' },
+    ]
+    const txs = [
+      tx({ accountId: 'a', date: '2026-09-20', amount: -100, source: 'extracto', bankDate: '2026-09-20' }),
+      tx({ accountId: 'b', date: '2026-10-25', amount: -100, source: 'extracto', bankDate: '2026-10-25' }),
+      tx({ accountId: 'c', date: '2026-08-01', amount: -100, source: 'extracto', bankDate: '2026-08-01' }),
+      tx({ accountId: 'd', date: '2026-08-01', amount: -100 }),
+    ]
+    expect(staleStatements(accs, txs, '2026-11-05')).toEqual([{ id: 'a', name: 'Nómina', last: '2026-09-20', days: 46 }])
   })
 })

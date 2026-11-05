@@ -151,3 +151,60 @@ export function parseSearch(q: string, today: ISODate, startDay = 1): SearchQuer
     : q.trim()
   return { text, range, label }
 }
+
+export interface TagTotal {
+  tag: string
+  /** Gastado (positivo), descontando devoluciones con la misma etiqueta */
+  spent: number
+  count: number
+  first: ISODate
+  last: ISODate
+}
+
+/**
+ * Totales por etiqueta («Viaje Roma», «Reforma cocina»): para ver cuánto costó un viaje o un
+ * proyecto entero, aunque dure varios meses. Las más recientes primero.
+ */
+export function tagTotals(txs: Transaction[]): TagTotal[] {
+  const map = new Map<string, TagTotal>()
+  for (const t of txs) {
+    if ((t.kind !== 'gasto' && t.kind !== 'ingreso') || t.excluded) continue
+    for (const raw of t.tags ?? []) {
+      const tag = raw.trim()
+      if (!tag) continue
+      const key = normalize(tag)
+      const e = map.get(key) ?? { tag, spent: 0, count: 0, first: t.date, last: t.date }
+      e.spent -= t.amount
+      e.count++
+      if (t.date < e.first) e.first = t.date
+      if (t.date > e.last) e.last = t.date
+      map.set(key, e)
+    }
+  }
+  return [...map.values()].sort((a, b) => b.last.localeCompare(a.last))
+}
+
+/** Días sin movimientos nuevos del extracto a partir de los cuales se recuerda importarlo */
+export const STATEMENT_STALE_DAYS = 35
+
+/**
+ * Cuentas de banco o tarjeta cuyo último movimiento importado del extracto es de hace más de
+ * 35 días: toca descargar el extracto nuevo. Solo las que ya se han importado alguna vez.
+ */
+export function staleStatements(accounts: { id: string; name: string; type: string; archived?: boolean }[], txs: Transaction[], today: ISODate): { id: string; name: string; last: ISODate; days: number }[] {
+  const last = new Map<string, ISODate>()
+  for (const t of txs) {
+    if (t.source !== 'extracto' || !t.bankDate) continue
+    const prev = last.get(t.accountId)
+    if (!prev || t.bankDate > prev) last.set(t.accountId, t.bankDate)
+  }
+  const out: { id: string; name: string; last: ISODate; days: number }[] = []
+  for (const a of accounts) {
+    if (a.archived || (a.type !== 'banco' && a.type !== 'tarjeta')) continue
+    const d = last.get(a.id)
+    if (!d) continue
+    const days = daysBetween(d, today)
+    if (days > STATEMENT_STALE_DAYS) out.push({ id: a.id, name: a.name, last: d, days })
+  }
+  return out.sort((a, b) => b.days - a.days)
+}

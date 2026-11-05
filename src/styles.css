@@ -362,6 +362,7 @@ button.list-item:active, .list-item.tap:active { background: var(--rule); }
 .sheet-grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--control); margin: 7px auto 0; flex: none; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px 8px 18px; flex: none; }
 .sheet-head h2 { font-size: 18px; font-weight: 600; }
+.sheet-body > * { flex-shrink: 0; }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 4px var(--margin) calc(24px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 14px; -webkit-overflow-scrolling: touch; }
 .sheet-foot { flex: none; padding: 10px var(--margin) calc(12px + var(--safe-bottom)); border-top: 1px solid var(--border); background: var(--ground); display: flex; gap: 10px; }
 @keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -505,3 +506,11 @@ button.list-item:active, .list-item.tap:active { background: var(--rule); }
 .tx-day + .tx-day { border-top: 1px solid var(--rule); }
 .tx-days .day-head { position: sticky; top: var(--safe-top); z-index: 1; background: var(--surface); padding: 10px var(--pad) 4px; }
 .donut-center { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; }
+
+/* ---------- Ajustes: preferencias plegadas ---------- */
+.settings-fold summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.settings-fold summary::-webkit-details-marker { display: none; }
+.settings-fold summary .primary-line { display: block; font-weight: 500; }
+.settings-fold summary .secondary-line { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
+.settings-fold[open] summary .chev { transform: rotate(90deg); }
+.settings-fold .chev { transition: transform 160ms var(--ease-out); }
