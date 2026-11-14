@@ -44,4 +44,11 @@ describe('archivo del Atajo de Apple Pay', () => {
     expect(accountForCard('visa debito', accounts, null)).toBe('t')
     expect(accountForCard('Otra', accounts, 'b')).toBe('b')
   })
+
+  it('asigna las líneas de una etiqueta NFC a la cuenta de efectivo por su nombre', () => {
+    const { payments } = parseShortcutFile('2026-11-14 08:30;Café;1,50;Efectivo\n')
+    const accounts = [account({ id: 'b', type: 'banco', name: 'CaixaBank' }), account({ id: 'e', type: 'efectivo', name: 'Efectivo' })]
+    expect(payments[0]).toMatchObject({ merchant: 'Café', amount: -150, card: 'Efectivo' })
+    expect(accountForCard(payments[0].card, accounts, null)).toBe('e')
+  })
 })

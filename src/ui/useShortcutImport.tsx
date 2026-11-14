@@ -19,7 +19,9 @@ export function useShortcutImport() {
 
   async function finish(payments: ShortcutPayment[], fileName: string, fallback: string | null) {
     const res = await importShortcutPayments(payments, usable, fallback, fileName)
-    if (res.added) toast.show(`${res.added} pago${res.added === 1 ? '' : 's'} nuevo${res.added === 1 ? '' : 's'} pendiente${res.added === 1 ? '' : 's'} de confirmar${res.skipped ? ` · ${res.skipped} ya estaban` : ''}`, { action: undo })
+    const pl = (n: number) => (n === 1 ? '' : 's')
+    const detail = res.pending === res.added ? ` pendiente${pl(res.added)} de confirmar` : res.pending ? ` (${res.pending} pendiente${pl(res.pending)} de confirmar)` : ''
+    if (res.added) toast.show(`${res.added} pago${pl(res.added)} nuevo${pl(res.added)}${detail}${res.skipped ? ` · ${res.skipped} ya estaban` : ''}`, { action: undo })
     else toast.show(payments.length ? 'No hay pagos nuevos: todos estaban ya importados' : 'El archivo no tiene pagos')
   }
 

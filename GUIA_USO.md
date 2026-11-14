@@ -79,6 +79,30 @@ La primera línea (cabecera) es opcional. El importe puede llevar coma o punto y
       - Desactiva **Preguntar dónde guardar** (si aparece).
 6. Pulsa **OK**. La primera vez que pagues, iOS puede pedirte permiso para escribir en el archivo: concede **Permitir siempre**.
 
+### Gastos con etiquetas NFC (café, parking, efectivo…)
+
+Pega una pegatina NFC donde pagas siempre lo mismo (la cartera, la máquina de café, la llave del coche) y acerca el iPhone para apuntar el gasto en el mismo `claudio-pagos.csv`. Sirve para gastos en **efectivo** o con tarjetas que no están en Wallet.
+
+**Qué necesitas:** iPhone XS o posterior con iOS 17 o superior y pegatinas NFC **NTAG213/215/216** (las venden en packs; no hace falta grabarles nada).
+
+**Crear la automatización** (una por pegatina):
+
+1. **Atajos** → **Automatización** → **+** → **NFC**.
+2. Pulsa **Escanear**, acerca el iPhone a la pegatina y ponle nombre (por ejemplo «Café»).
+3. Marca **Ejecutar inmediatamente** y desactiva **Notificar al ejecutar**. Pulsa **Siguiente** → **Nuevo atajo en blanco**.
+4. Añade estas acciones:
+   1. **Fecha actual** → **Formatear fecha** → Personalizado `yyyy-MM-dd HH:mm`.
+   2. *(Solo si el importe cambia)* **Solicitar entrada** → Tipo **Número**, pregunta «¿Cuánto?». Si es siempre lo mismo (1,50 € del café), sáltate este paso.
+   3. **Texto**: `Fecha formateada;Café;1,50;Efectivo` (o `…;Café;Entrada proporcionada;Efectivo` si usaste el paso 2).
+   4. **Añadir al archivo de texto** → `claudio-pagos.csv` en **iCloud Drive › Atajos**, con **Crear nueva línea** activado.
+5. Pulsa **OK**.
+
+El último campo indica la cuenta: escribe el **nombre de tu cuenta de efectivo** tal cual está en la app (por ejemplo «Efectivo» o «Cartera»), o el nombre de la tarjeta en Wallet si pagas con ella. Si no coincide con ninguna, al importar la app te pregunta la cuenta y lo recuerda.
+
+Al pulsar **Importar pagos del Atajo**, los gastos en una cuenta de **efectivo** entran ya **confirmados** (ningún extracto los va a confirmar); los de tarjeta quedan pendientes hasta el extracto, como los de Apple Pay.
+
+> Safari no puede leer NFC en el iPhone, por eso se hace con Atajos y no desde la propia app.
+
 ### Importar los pagos
 
 En **Inicio**, pulsa **Importar pagos del Atajo** y elige `claudio-pagos.csv` en **Archivos → iCloud Drive → Atajos**.

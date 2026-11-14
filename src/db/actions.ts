@@ -261,6 +261,8 @@ export async function importShortcutPayments(payments: ShortcutPayment[], accoun
   for (const p of fresh) {
     const accountId = accountForCard(p.card, usable, fallbackAccountId)
     if (!accountId) continue
+    // Ningún extracto confirmará un gasto en efectivo (p. ej. el de una etiqueta NFC): se guarda ya confirmado
+    const cash = usable.find((a) => a.id === accountId)?.type === 'efectivo'
     const c = categorize(p.merchant, p.amount, rules, true)
     toAdd.push(
       newTransaction({
@@ -270,10 +272,10 @@ export async function importShortcutPayments(payments: ShortcutPayment[], accoun
         description: p.merchant,
         categoryId: c.categoryId,
         kind: c.kind,
-        status: 'pendiente',
+        status: cash ? 'confirmado' : 'pendiente',
         source: 'atajo',
         externalId: p.externalId,
-        notes: p.card ? `Apple Pay · ${p.card}` : 'Apple Pay',
+        notes: cash ? `Atajo · ${p.card || 'efectivo'}` : p.card ? `Apple Pay · ${p.card}` : 'Apple Pay',
       }),
     )
   }
@@ -281,7 +283,7 @@ export async function importShortcutPayments(payments: ShortcutPayment[], accoun
     if (toAdd.length) await db.transactions.bulkAdd(toAdd)
     await db.imports.add({ id: uid(), type: 'atajo', fileName, added: toAdd.length, reconciled: 0, skipped: payments.length - toAdd.length, createdAt: now() })
   })
-  return { added: toAdd.length, skipped: payments.length - toAdd.length }
+  return { added: toAdd.length, pending: toAdd.filter((t) => t.status === 'pendiente').length, skipped: payments.length - toAdd.length }
 }
 
 export async function confirmTransactions(ids: string[]) {
